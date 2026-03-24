@@ -5,12 +5,14 @@ from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime
 import shutil
+import yaml
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from .factory import ImporterFactory
 from .base import ImportResult
+from ..storage.user_isolated import UserMemoryManager
 
 
 console = Console()
@@ -42,15 +44,16 @@ class BatchImporter:
     - 冲突处理
     - 增量导入
     - 导入预览
+    - 多用户隔离
     """
     
     def __init__(
         self,
-        memory_storage,
+        memory_manager: UserMemoryManager,
         llm_client=None,
         dry_run: bool = False
     ):
-        self.memory_storage = memory_storage
+        self.memory_manager = memory_manager
         self.llm_client = llm_client
         self.dry_run = dry_run
         self._conflict_strategy = "skip"  # skip / overwrite / rename / ask
@@ -266,12 +269,64 @@ class BatchImporter:
     
     def _save_to_memory(self, result: ImportResult):
         """保存导入结果到记忆库"""
-        # TODO: 实现实际的保存逻辑
+        if not result.success:
+            return
+        
         # 1. 生成目标路径
-        # 2. 处理冲突
-        # 3. 保存文件
-        # 4. 生成向量索引
-        pass
+        filename = f"{result.file_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        memory_path = self.memory_manager.get_memory_path(result.memory_type, filename)
+        
+        # 2. 处理冲突（如果文件已存在）
+        if memory_path.exists():
+            filename = f"{result.file_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.memory_manager.user_id}.md"
+            memory_path = self.memory_manager.get_memory_path(result.memory_type, filename)
+        
+        # 3. 构建 Markdown 内容
+        content = self._build_memory_content(result)
+        
+        # 4. 保存文件
+        memory_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(memory_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        # 5. TODO: 生成向量索引
+        # self._create_vector_index(result, memory_path)
+    
+    def _build_memory_content(self, result: ImportResult) -> str:
+        """构建记忆文件内容"""
+        lines = [
+            f"# {result.title}",
+            "",
+            f"**类型**: {result.memory_type}",
+            f"**来源**: {result.file_path}",
+            f"**导入时间**: {datetime.now().isoformat()}",
+            f"**标签**: {', '.join(result.tags) if result.tags else '无'}",
+            "",
+            "---",
+            "",
+            "## 内容",
+            "",
+            result.content,
+            "",
+            "---",
+            "",
+            "## 元数据",
+            "",
+            "```yaml",
+            yaml.dump(result.metadata, allow_unicode=True, default_flow_style=False),
+            "```",
+        ]
+        
+        if result.extracted_insights:
+            lines.extend([
+                "",
+                "## 提取的洞察",
+                "",
+            ])
+            for insight in result.extracted_insights:
+                lines.append(f"- {insight}")
+        
+        return "\n".join(lines)
     
     def _display_results(self, results: List[ImportResult], duration: float):
         """显示导入结果"""
