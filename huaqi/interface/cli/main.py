@@ -124,5 +124,47 @@ def skill_list():
     console.print("  [dim]暂无已配置的技能[/dim]")
 
 
+# 导入命令
+@app.command()
+def import_files(
+    source: Path = typer.Argument(..., help="要导入的文件或目录路径"),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="预览模式，不实际导入"),
+    wizard: bool = typer.Option(False, "--wizard", "-w", help="使用交互式向导"),
+):
+    """导入外部文档作为记忆"""
+    console.print(get_banner())
+    console.print()
+    
+    if not source.exists():
+        console.print(f"[red]路径不存在: {source}[/red]")
+        raise typer.Exit(1)
+    
+    # TODO: 初始化导入器
+    from huaqi.memory.importer.batch import ImportWizard, BatchImporter
+    
+    importer = BatchImporter(
+        memory_storage=None,  # TODO: 传入实际存储
+        llm_client=None,      # TODO: 传入 LLM 客户端
+        dry_run=dry_run
+    )
+    
+    if wizard or source.is_dir():
+        # 使用向导模式
+        wizard = ImportWizard(importer)
+        wizard.run()
+    else:
+        # 直接导入单个文件
+        result = importer.import_single(source)
+        
+        if result.success:
+            console.print(f"[green]✓ 导入成功:[/green] {result.title}")
+            console.print(f"  类型: {result.memory_type}")
+            console.print(f"  标签: {', '.join(result.tags)}")
+            if result.extracted_insights:
+                console.print(f"  提取到 {len(result.extracted_insights)} 条洞察")
+        else:
+            console.print(f"[red]✗ 导入失败:[/red] {result.error_message}")
+
+
 if __name__ == "__main__":
     app()
