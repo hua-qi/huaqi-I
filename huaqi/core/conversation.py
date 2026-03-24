@@ -1,0 +1,344 @@
+"""对话管理系统
+
+整合用户、LLM、记忆，实现完整的对话流程
+"""
+
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional, Iterator
+from datetime import datetime
+from pathlib import Path
+import json
+import uuid
+
+from .config import ConfigManager
+from .llm import LLMManager, Message, LLMResponse, init_llm_manager
+from ..memory.storage.user_isolated import UserMemoryManager
+from ..memory.storage.markdown_store import MarkdownMemoryStore
+
+
+@dataclass
+class ConversationTurn:
+    """对话回合"""
+    id: str
+    timestamp: datetime
+    user_message: str
+    assistant_response: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat(),
+            "user_message": self.user_message,
+            "assistant_response": self.assistant_response,
+            "metadata": self.metadata,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ConversationTurn":
+        return cls(
+            id=data["id"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            user_message=data["user_message"],
+            assistant_response=data["assistant_response"],
+            metadata=data.get("metadata", {}),
+        )
+
+
+@dataclass
+class ConversationSession:
+    """对话会话"""
+    session_id: str
+    user_id: str
+    started_at: datetime
+    turns: List[ConversationTurn] = field(default_factory=list)
+    context: Dict[str, Any] = field(default_factory=dict)
+    
+    @property
+    def message_count(self) -> int:
+        return len(self.turns) * 2  # user + assistant
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "user_id": self.user_id,
+            "started_at": self.started_at.isoformat(),
+            "turns": [t.to_dict() for t in self.turns],
+            "context": self.context,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ConversationSession":
+        return cls(
+            session_id=data["session_id"],
+            user_id=data["user_id"],
+            started_at=datetime.fromisoformat(data["started_at"]),
+            turns=[ConversationTurn.from_dict(t) for t in data.get("turns", [])],
+            context=data.get("context", {}),
+        )
+
+
+class ConversationManager:
+    """对话管理器"""
+    
+    def __init__(
+        self,
+        config_manager: ConfigManager,
+        llm_manager: Optional[LLMManager] = None,
+        user_id: Optional[str] = None,
+    ):
+        self.config_manager = config_manager
+        self.user_id = user_id or config_manager.current_user_id
+        self.llm_manager = llm_manager or init_llm_manager()
+        self.memory_manager = UserMemoryManager(config_manager, self.user_id)
+        
+        self._current_session: Optional[ConversationSession] = None
+        self._system_prompt: Optional[str] = None
+        
+        # 加载配置
+        self._load_config()
+    
+    def _load_config(self):
+        """加载配置"""
+        config = self.config_manager.load_config(self.user_id)
+        
+        # 配置 LLM
+        for name, provider_config in config.llm_providers.items():
+            from .llm import LLMConfig
+            llm_config = LLMConfig(
+                provider=name,
+                model=provider_config.model,
+                api_key=provider_config.api_key,
+                api_base=provider_config.api_base,
+                temperature=provider_config.temperature,
+                max_tokens=provider_config.max_tokens,
+            )
+            self.llm_manager.add_config(llm_config)
+        
+        # 设置默认提供商
+        if config.llm_default_provider:
+            try:
+                self.llm_manager.set_active(config.llm_default_provider)
+            except:
+                # 如果设置失败，使用 dummy
+                from .llm import LLMConfig
+                self.llm_manager.add_config(LLMConfig(
+                    provider="dummy",
+                    model="dummy",
+                ))
+                self.llm_manager.set_active("dummy")
+        
+        # 加载系统提示词
+        self._system_prompt = self._build_system_prompt()
+    
+    def _build_system_prompt(self) -> str:
+        """构建系统提示词"""
+        # 基础系统提示词
+        base_prompt = """你是 Huaqi，用户的个人 AI 同伴。你的核心理念是"不是使用 AI，而是养育 AI"。
+
+你的特点：
+1. 你是用户的同伴（Peer），不是工具或仆人
+2. 你会记住用户的偏好、习惯和重要信息
+3. 你会随着对话深入而变得更懂用户
+4. 你的目标是帮助用户成长，而不仅仅是回答问题
+
+在对话中：
+- 保持友好、真诚的语气
+- 主动关心用户的目标和进展
+- 适时提醒用户之前提到过的重要事情
+- 帮助用户整理思路、做出决策
+- 鼓励用户尝试新事物、走出舒适区
+"""
+        
+        # TODO: 从记忆中加载用户档案，个性化提示词
+        # TODO: 加载用户的价值观、目标、偏好
+        
+        return base_prompt
+    
+    def start_session(self) -> ConversationSession:
+        """开始新会话"""
+        self._current_session = ConversationSession(
+            session_id=str(uuid.uuid4())[:8],
+            user_id=self.user_id,
+            started_at=datetime.now(),
+        )
+        return self._current_session
+    
+    def get_session(self) -> Optional[ConversationSession]:
+        """获取当前会话"""
+        return self._current_session
+    
+    def chat(self, user_input: str, stream: bool = False) -> str | Iterator[str]:
+        """对话
+        
+        Args:
+            user_input: 用户输入
+            stream: 是否流式输出
+            
+        Returns:
+            str 或 Iterator[str]
+        """
+        if self._current_session is None:
+            self.start_session()
+        
+        # 1. 构建消息列表
+        messages = self._build_messages(user_input)
+        
+        # 2. 调用 LLM
+        if stream:
+            return self._chat_stream(user_input, messages)
+        else:
+            return self._chat_sync(user_input, messages)
+    
+    def _build_messages(self, user_input: str) -> List[Message]:
+        """构建消息列表"""
+        messages = []
+        
+        # 系统提示词
+        if self._system_prompt:
+            messages.append(Message.system(self._system_prompt))
+        
+        # 历史对话（最近几轮）
+        if self._current_session:
+            history = self._current_session.turns[-5:]  # 最近5轮
+            for turn in history:
+                messages.append(Message.user(turn.user_message))
+                messages.append(Message.assistant(turn.assistant_response))
+        
+        # 当前输入
+        messages.append(Message.user(user_input))
+        
+        return messages
+    
+    def _chat_sync(self, user_input: str, messages: List[Message]) -> str:
+        """同步对话"""
+        try:
+            response = self.llm_manager.chat(messages, stream=False)
+            
+            # 记录对话
+            self._record_turn(user_input, response.content, {
+                "model": response.model,
+                "tokens": response.total_tokens,
+                "latency_ms": response.latency_ms,
+            })
+            
+            return response.content
+            
+        except Exception as e:
+            error_msg = f"抱歉，对话出现了一些问题：{str(e)}"
+            self._record_turn(user_input, error_msg, {"error": str(e)})
+            return error_msg
+    
+    def _chat_stream(self, user_input: str, messages: List[Message]) -> Iterator[str]:
+        """流式对话"""
+        full_response = []
+        
+        try:
+            for chunk in self.llm_manager.chat(messages, stream=True):
+                full_response.append(chunk)
+                yield chunk
+            
+            # 记录完整对话
+            complete_response = "".join(full_response)
+            self._record_turn(user_input, complete_response, {"stream": True})
+            
+        except Exception as e:
+            error_msg = f"抱歉，对话出现了一些问题：{str(e)}"
+            yield error_msg
+            self._record_turn(user_input, error_msg, {"error": str(e), "stream": True})
+    
+    def _record_turn(self, user_input: str, assistant_response: str, metadata: Dict[str, Any]):
+        """记录对话回合"""
+        if self._current_session is None:
+            return
+        
+        turn = ConversationTurn(
+            id=str(uuid.uuid4())[:8],
+            timestamp=datetime.now(),
+            user_message=user_input,
+            assistant_response=assistant_response,
+            metadata=metadata,
+        )
+        
+        self._current_session.turns.append(turn)
+        
+        # 保存到文件
+        self._save_session()
+    
+    def _save_session(self):
+        """保存会话到 Markdown 文件"""
+        if self._current_session is None:
+            return
+        
+        # 使用 Markdown 存储
+        conversations_dir = self.memory_manager.user_memory_dir / "conversations"
+        store = MarkdownMemoryStore(conversations_dir)
+        
+        # 将 turns 转换为字典列表
+        turns_data = [
+            {
+                "user_message": turn.user_message,
+                "assistant_response": turn.assistant_response,
+                "metadata": turn.metadata,
+            }
+            for turn in self._current_session.turns
+        ]
+        
+        # 保存为 Markdown
+        store.save_conversation(
+            session_id=self._current_session.session_id,
+            timestamp=self._current_session.started_at,
+            turns=turns_data,
+            metadata={
+                "user_id": self._current_session.user_id,
+                "message_count": self._current_session.message_count,
+            }
+        )
+    
+    def get_recent_sessions(self, limit: int = 10) -> List[ConversationSession]:
+        """获取最近的会话"""
+        conversations_dir = (
+            self.memory_manager.user_memory_dir / "conversations"
+        )
+        store = MarkdownMemoryStore(conversations_dir)
+        
+        # 从 Markdown 文件加载
+        conversations = store.list_conversations(limit=limit)
+        
+        sessions = []
+        for conv_info in conversations:
+            try:
+                filepath = conversations_dir / conv_info["filepath"]
+                conv_data = store.load_conversation(filepath)
+                
+                if conv_data:
+                    session = ConversationSession(
+                        session_id=conv_data["session_id"],
+                        user_id=self.user_id,
+                        started_at=datetime.fromisoformat(conv_data["created_at"]),
+                        turns=[
+                            ConversationTurn(
+                                id=str(i),
+                                timestamp=datetime.now(),  # Markdown 中不保存每轮时间
+                                user_message=turn["user_message"],
+                                assistant_response=turn["assistant_response"],
+                                metadata=turn.get("metadata", {}),
+                            )
+                            for i, turn in enumerate(conv_data.get("turns", []))
+                        ],
+                    )
+                    sessions.append(session)
+            except:
+                continue
+        
+        return sessions
+    
+    def clear_session(self):
+        """清除当前会话"""
+        self._current_session = None
+    
+    def export_session(self) -> Dict[str, Any]:
+        """导出当前会话"""
+        if self._current_session:
+            return self._current_session.to_dict()
+        return {}

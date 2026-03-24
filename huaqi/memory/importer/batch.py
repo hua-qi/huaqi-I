@@ -268,23 +268,29 @@ class BatchImporter:
         return self.import_single(file_path)
     
     def _save_to_memory(self, result: ImportResult):
-        """保存导入结果到记忆库"""
+        """保存导入结果到记忆库（Markdown 格式）"""
         if not result.success:
             return
         
-        # 1. 生成目标路径
-        filename = f"{result.file_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        # 生成唯一文件名
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        base_name = result.file_path.stem
+        filename = f"{base_name}_{timestamp}.md"
+        
+        # 获取存储路径
         memory_path = self.memory_manager.get_memory_path(result.memory_type, filename)
         
-        # 2. 处理冲突（如果文件已存在）
-        if memory_path.exists():
-            filename = f"{result.file_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.memory_manager.user_id}.md"
+        # 处理冲突
+        counter = 1
+        while memory_path.exists():
+            filename = f"{base_name}_{timestamp}_{counter}.md"
             memory_path = self.memory_manager.get_memory_path(result.memory_type, filename)
+            counter += 1
         
-        # 3. 构建 Markdown 内容
+        # 构建 Markdown 内容
         content = self._build_memory_content(result)
         
-        # 4. 保存文件
+        # 保存文件
         memory_path.parent.mkdir(parents=True, exist_ok=True)
         with open(memory_path, "w", encoding="utf-8") as f:
             f.write(content)

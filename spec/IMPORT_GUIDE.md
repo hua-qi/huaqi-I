@@ -66,6 +66,38 @@ huaqi import document.md --type project --tags "AI,learning"
 
 ---
 
+## 存储格式
+
+所有记忆以 **Markdown 格式** 存储，包含：
+- **YAML Frontmatter**: 元数据（类型、标签、时间等）
+- **Markdown 正文**: 人类可读的内容
+
+### 示例
+
+```markdown
+---
+type: project
+title: 项目规划
+imported_at: 2026-03-24T10:30:00
+tags: [work, ai]
+---
+
+# 项目规划
+
+**类型**: project  
+**来源**: /Users/me/Documents/plan.md  
+**导入时间**: 2026-03-24T10:30:00  
+**标签**: work, ai  
+
+---
+
+## 内容
+
+原始文档内容...
+```
+
+---
+
 ## 导入流程
 
 ```

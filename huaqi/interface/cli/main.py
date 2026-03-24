@@ -302,6 +302,33 @@ memory_app = typer.Typer(name="memory", help="记忆管理")
 app.add_typer(memory_app, name="memory")
 
 
+@memory_app.command("init")
+def memory_init(
+    quick: bool = typer.Option(False, "--quick", "-q", help="快速初始化（最小化档案）"),
+    name: str = typer.Option(None, "--name", "-n", help="你的名字（快速模式）"),
+    occupation: str = typer.Option(None, "--occupation", "-o", help="职业（快速模式）"),
+):
+    """初始化记忆档案"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from huaqi.core.memory_initializer import init_memory_command
+    
+    memory_manager = UserMemoryManager(_config_manager, user_id)
+    
+    if quick:
+        # 快速模式
+        if not name:
+            name = Prompt.ask("你的名字")
+        if not occupation:
+            occupation = Prompt.ask("你的职业", default="未知")
+        
+        init_memory_command(memory_manager, quick=True, name=name, occupation=occupation)
+    else:
+        # 交互式向导
+        init_memory_command(memory_manager, quick=False)
+
+
 @memory_app.command("search")
 def memory_search(query: str):
     """搜索记忆"""
@@ -362,6 +389,115 @@ def memory_list(type_filter: Optional[str] = typer.Option(None, "--type", "-t", 
             console.print(f"\n  ... 还有 {len(memories) - 20} 条")
     else:
         console.print("暂无记忆")
+
+
+# ========== 对话命令 ==========
+
+@app.command()
+def chat(
+    quick: str = typer.Option(None, "--quick", "-q", help="快速问答模式（单次）"),
+    stream: bool = typer.Option(True, "--stream/--no-stream", help="是否流式输出"),
+):
+    """开始与 AI 同伴对话"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from huaqi.core.conversation import ConversationManager
+    from huaqi.core.llm import init_llm_manager
+    
+    console.print(get_banner())
+    console.print()
+    
+    # 检查 LLM 配置
+    llm_manager = init_llm_manager()
+    config = _config_manager.load_config(user_id)
+    
+    # 如果没有配置 LLM，使用 dummy
+    if not config.llm_providers:
+        console.print("[yellow]提示: 尚未配置 LLM，使用虚拟模式[/yellow]")
+        console.print("请配置真实的 LLM 提供商以获得更好的体验:")
+        console.print("  huaqi config set llm_default_provider claude")
+        console.print("  huaqi config set llm_providers.claude.api_key YOUR_API_KEY")
+        
+        from huaqi.core.llm import LLMConfig
+        llm_manager.add_config(LLMConfig(
+            provider="dummy",
+            model="dummy",
+        ))
+        llm_manager.set_active("dummy")
+    
+    # 初始化对话管理器
+    conversation = ConversationManager(
+        config_manager=_config_manager,
+        llm_manager=llm_manager,
+        user_id=user_id,
+    )
+    
+    # 快速问答模式
+    if quick:
+        console.print(f"[bold]你:[/bold] {quick}\n")
+        console.print("[bold]Huaqi:[/bold] ", end="")
+        
+        if stream:
+            response_text = ""
+            for chunk in conversation.chat(quick, stream=True):
+                console.print(chunk, end="")
+                response_text += chunk
+            console.print()
+        else:
+            response = conversation.chat(quick, stream=False)
+            console.print(response)
+        
+        return
+    
+    # 交互式对话模式
+    console.print("[dim]开始对话，输入 'exit' 或 'quit' 退出，输入 'clear' 清除上下文[/dim]\n")
+    
+    while True:
+        try:
+            # 获取用户输入
+            user_input = console.input("[bold]你:[/bold] ").strip()
+            
+            if not user_input:
+                continue
+            
+            # 处理特殊命令
+            if user_input.lower() in ("exit", "quit", "q"):
+                console.print("\n[dim]再见！期待下次与你交流。[/dim]")
+                break
+            
+            if user_input.lower() == "clear":
+                conversation.clear_session()
+                console.print("[dim]会话上下文已清除[/dim]\n")
+                continue
+            
+            if user_input.lower() == "status":
+                session = conversation.get_session()
+                if session:
+                    console.print(f"[dim]当前会话: {session.session_id}, 共 {len(session.turns)} 轮对话[/dim]\n")
+                else:
+                    console.print("[dim]无活动会话[/dim]\n")
+                continue
+            
+            # 对话
+            console.print()
+            console.print("[bold cyan]Huaqi:[/bold cyan] ", end="")
+            
+            if stream:
+                for chunk in conversation.chat(user_input, stream=True):
+                    console.print(chunk, end="")
+                console.print("\n")
+            else:
+                response = conversation.chat(user_input, stream=False)
+                console.print(response)
+                console.print()
+                
+        except KeyboardInterrupt:
+            console.print("\n\n[dim]已中断对话[/dim]")
+            break
+        except EOFError:
+            console.print("\n\n[dim]再见！[/dim]")
+            break
 
 
 # ========== 技能命令 ==========
