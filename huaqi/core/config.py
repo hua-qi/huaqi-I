@@ -24,13 +24,16 @@ class LLMProviderConfig(BaseModel):
 
 
 class MemoryConfig(BaseModel):
-    """记忆系统配置"""
+    """记忆系统配置（V2 - 无需 Embedding）"""
     max_session_memory: int = 100
     max_working_memory: int = 50
     auto_extract_insights: bool = True
     importance_threshold: float = 0.6
-    embedding_model: str = "text-embedding-3-small"
-    vector_db_path: str = "vectors/"
+    # 搜索配置
+    search_algorithm: str = "hybrid"  # hybrid / text / llm
+    search_recall_k: int = 20  # 召回阶段数量
+    search_top_k: int = 5  # 最终结果数量
+    # 已移除: embedding_model, vector_db_path（不再需要）
 
 
 class SyncConfig(BaseModel):
