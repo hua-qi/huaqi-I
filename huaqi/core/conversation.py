@@ -12,8 +12,11 @@ import uuid
 
 from .config import ConfigManager
 from .llm import LLMManager, Message, LLMResponse, init_llm_manager
+from .memory_extractor import MemoryExtractor, SimpleMemoryExtractor
 from ..memory.storage.user_isolated import UserMemoryManager
 from ..memory.storage.markdown_store import MarkdownMemoryStore
+from ..memory.storage.vector_store import UserVectorStore, OpenAIEmbedding, DummyEmbedding
+
 
 
 @dataclass
@@ -95,8 +98,47 @@ class ConversationManager:
         self._current_session: Optional[ConversationSession] = None
         self._system_prompt: Optional[str] = None
         
+        # 初始化向量存储
+        self._init_vector_store()
+        
+        # 初始化记忆提取器
+        self.memory_extractor = MemoryExtractor(
+            llm_manager=self.llm_manager,
+            memory_manager=self.memory_manager
+        )
+        
         # 加载配置
         self._load_config()
+    
+    def _init_vector_store(self):
+        """初始化向量存储"""
+        try:
+            # 尝试使用 OpenAI Embedding
+            config = self.config_manager.load_config(self.user_id)
+            active_llm = config.llm_providers.get(config.llm_default_provider)
+            
+            if active_llm and active_llm.api_key:
+                embedding_provider = OpenAIEmbedding(
+                    api_key=active_llm.api_key,
+                    model=config.memory.embedding_model
+                )
+            else:
+                # 使用虚拟 Embedding
+                embedding_provider = DummyEmbedding()
+            
+            self.vector_store = UserVectorStore(
+                base_dir=self.config_manager.get_user_data_dir(self.user_id).parent.parent,
+                user_id=self.user_id,
+                embedding_provider=embedding_provider
+            )
+            
+        except Exception:
+            # 失败时使用虚拟 Embedding
+            self.vector_store = UserVectorStore(
+                base_dir=self.config_manager.get_user_data_dir(self.user_id).parent.parent,
+                user_id=self.user_id,
+                embedding_provider=DummyEmbedding()
+            )
     
     def _load_config(self):
         """加载配置"""
@@ -131,8 +173,8 @@ class ConversationManager:
         # 加载系统提示词
         self._system_prompt = self._build_system_prompt()
     
-    def _build_system_prompt(self) -> str:
-        """构建系统提示词"""
+    def _build_system_prompt(self, user_query: Optional[str] = None) -> str:
+        """构建系统提示词，包含相关记忆上下文"""
         # 基础系统提示词
         base_prompt = """你是 Huaqi，用户的个人 AI 同伴。你的核心理念是"不是使用 AI，而是养育 AI"。
 
@@ -150,10 +192,60 @@ class ConversationManager:
 - 鼓励用户尝试新事物、走出舒适区
 """
         
-        # TODO: 从记忆中加载用户档案，个性化提示词
-        # TODO: 加载用户的价值观、目标、偏好
+        # 加载用户档案
+        user_profile = self._load_user_profile()
+        if user_profile:
+            base_prompt += f"\n\n## 用户档案\n\n{user_profile}\n"
+        
+        # 如果提供了查询，检索相关记忆
+        if user_query:
+            relevant_memories = self._retrieve_relevant_memories(user_query)
+            if relevant_memories:
+                base_prompt += f"\n\n## 相关记忆（你可能需要参考）\n\n{relevant_memories}\n"
         
         return base_prompt
+    
+    def _load_user_profile(self) -> Optional[str]:
+        """加载用户档案"""
+        try:
+            profile_path = self.memory_manager.user_memory_dir / "identity" / "profile.md"
+            if profile_path.exists():
+                with open(profile_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # 解析 frontmatter 和正文
+                from ..memory.storage.markdown_store import MarkdownMemoryStore
+                store = MarkdownMemoryStore(Path("/tmp"))
+                _, body = store._parse_frontmatter(content)
+                
+                # 只取前 1000 字符作为提示
+                return body[:1000] + "..." if len(body) > 1000 else body
+        except Exception:
+            pass
+        
+        return None
+    
+    def _retrieve_relevant_memories(self, query: str, top_k: int = 3) -> Optional[str]:
+        """检索相关记忆"""
+        try:
+            results = self.vector_store.search_memories(query, top_k=top_k)
+            
+            if not results:
+                return None
+            
+            memories_text = []
+            for i, result in enumerate(results, 1):
+                content = result.get("content", "")
+                score = result.get("score", 0)
+                
+                # 只取高相关度的记忆
+                if score >= 0.7:
+                    memories_text.append(f"{i}. {content[:200]}...")
+            
+            return "\n".join(memories_text) if memories_text else None
+            
+        except Exception:
+            return None
     
     def start_session(self) -> ConversationSession:
         """开始新会话"""
@@ -194,9 +286,9 @@ class ConversationManager:
         """构建消息列表"""
         messages = []
         
-        # 系统提示词
-        if self._system_prompt:
-            messages.append(Message.system(self._system_prompt))
+        # 系统提示词（包含相关记忆）
+        system_prompt = self._build_system_prompt(user_input)
+        messages.append(Message.system(system_prompt))
         
         # 历史对话（最近几轮）
         if self._current_session:
@@ -222,6 +314,9 @@ class ConversationManager:
                 "latency_ms": response.latency_ms,
             })
             
+            # 异步提取记忆（不阻塞对话）
+            self._extract_memory_async(user_input, response.content)
+            
             return response.content
             
         except Exception as e:
@@ -242,10 +337,46 @@ class ConversationManager:
             complete_response = "".join(full_response)
             self._record_turn(user_input, complete_response, {"stream": True})
             
+            # 异步提取记忆
+            self._extract_memory_async(user_input, complete_response)
+            
         except Exception as e:
             error_msg = f"抱歉，对话出现了一些问题：{str(e)}"
             yield error_msg
             self._record_turn(user_input, error_msg, {"error": str(e), "stream": True})
+    
+    def _extract_memory_async(self, user_input: str, assistant_response: str):
+        """异步提取记忆（简化版，不阻塞对话）"""
+        try:
+            # 使用简单提取器
+            simple_extractor = SimpleMemoryExtractor()
+            insights = simple_extractor.extract(user_input)
+            
+            # 保存到洞察文件
+            for insight in insights:
+                if insight["confidence"] >= 0.7:
+                    self._save_insight(insight)
+        except:
+            pass
+    
+    def _save_insight(self, insight: Dict):
+        """保存洞察"""
+        try:
+            insights_path = self.memory_manager.user_memory_dir / "patterns" / "insights.md"
+            insights_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            entry = f"- [{timestamp}] [{insight['category']}] {insight['content']}\n"
+            
+            if insights_path.exists():
+                with open(insights_path, "a", encoding="utf-8") as f:
+                    f.write(entry)
+            else:
+                with open(insights_path, "w", encoding="utf-8") as f:
+                    f.write("---\ntype: insights\n---\n\n# 自动提取的洞察\n\n")
+                    f.write(entry)
+        except:
+            pass
     
     def _record_turn(self, user_input: str, assistant_response: str, metadata: Dict[str, Any]):
         """记录对话回合"""
