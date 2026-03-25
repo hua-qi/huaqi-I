@@ -9,6 +9,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.text import Text
 
 from huaqi import __version__, __description__
@@ -330,20 +331,51 @@ def memory_init(
 
 
 @memory_app.command("search")
-def memory_search(query: str):
-    """搜索记忆"""
+def memory_search(
+    query: str,
+    semantic: bool = typer.Option(False, "--semantic", "-s", help="使用语义搜索（需要配置向量库）"),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="返回结果数量"),
+):
+    """搜索记忆（关键词或语义）"""
     ensure_initialized()
     user_id = require_login()
     
-    memory_manager = UserMemoryManager(_config_manager, user_id)
-    results = memory_manager.search_memories(query)
-    
-    if results:
-        console.print(f"[bold]找到 {len(results)} 条记忆:[/bold]\n")
-        for result in results[:10]:
-            console.print(f"  📄 {result['path']}")
+    if semantic:
+        # 语义搜索
+        try:
+            from huaqi.memory.storage.vector_store import UserVectorStore, DummyEmbedding
+            from huaqi.core.config import DATA_DIR
+            
+            vector_store = UserVectorStore(DATA_DIR, user_id, embedding_provider=DummyEmbedding())
+            results = vector_store.search_memories(query, top_k=top_k)
+            
+            if results:
+                console.print(f"[bold]语义搜索找到 {len(results)} 条相关记忆:[/bold]\n")
+                for i, result in enumerate(results, 1):
+                    score = result.get("score", 0)
+                    content = result.get("content", "")[:150]
+                    source = result.get("metadata", {}).get("source", "未知")
+                    
+                    console.print(f"{i}. [dim](相关度: {score:.2f})[/dim]")
+                    console.print(f"   {content}...")
+                    console.print(f"   [dim]来源: {source}[/dim]\n")
+            else:
+                console.print("未找到相关记忆")
+                
+        except Exception as e:
+            console.print(f"[red]语义搜索失败: {e}[/red]")
+            console.print("[dim]提示: 请先索引记忆文件[/dim]")
     else:
-        console.print("未找到相关记忆")
+        # 关键词搜索
+        memory_manager = UserMemoryManager(_config_manager, user_id)
+        results = memory_manager.search_memories(query)
+        
+        if results:
+            console.print(f"[bold]找到 {len(results)} 条记忆:[/bold]\n")
+            for result in results[:10]:
+                console.print(f"  📄 {result['path']}")
+        else:
+            console.print("未找到相关记忆")
 
 
 @memory_app.command("status")
@@ -498,6 +530,171 @@ def chat(
         except EOFError:
             console.print("\n\n[dim]再见！[/dim]")
             break
+
+
+# ========== 同步命令 ==========
+
+sync_app = typer.Typer(name="sync", help="同步管理")
+app.add_typer(sync_app, name="sync")
+
+
+@sync_app.command("setup")
+def sync_setup(
+    remote_url: str = typer.Option(None, "--remote", "-r", help="远程仓库 URL (GitHub/其他)"),
+):
+    """设置同步"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from huaqi.core.sync import UserGitSync
+    
+    sync = UserGitSync(DATA_DIR, user_id)
+    
+    if not remote_url:
+        console.print("[yellow]提示: 未提供远程仓库 URL[/yellow]")
+        console.print("你可以之后通过以下方式添加:")
+        console.print("  huaqi sync setup --remote https://github.com/username/huaqi-data")
+        
+        # 仍然初始化本地仓库
+        if sync.setup():
+            console.print("[green]✓ 本地 Git 仓库已初始化[/green]")
+    else:
+        if sync.setup(remote_url=remote_url):
+            console.print("[green]✓ 同步设置成功[/green]")
+            console.print(f"[dim]远程仓库: {remote_url}[/dim]")
+
+
+@sync_app.command("status")
+def sync_status():
+    """查看同步状态"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from huaqi.core.sync import UserGitSync
+    
+    sync = UserGitSync(DATA_DIR, user_id)
+    status = sync.status()
+    
+    console.print("[bold]同步状态:[/bold]\n")
+    console.print(f"远程仓库: {'已配置' if status.has_remote else '未配置'}")
+    console.print(f"本地超前: {status.ahead} 提交")
+    console.print(f"本地落后: {status.behind} 提交")
+    console.print(f"修改文件: {len(status.modified)} 个")
+    console.print(f"未跟踪: {len(status.untracked)} 个")
+    
+    if status.last_sync:
+        console.print(f"上次同步: {status.last_sync}")
+    
+    if status.modified:
+        console.print("\n[dim]修改的文件:[/dim]")
+        for f in status.modified[:5]:
+            console.print(f"  • {f}")
+        if len(status.modified) > 5:
+            console.print(f"  ... 还有 {len(status.modified) - 5} 个")
+
+
+@sync_app.command("push")
+def sync_push(
+    message: str = typer.Option(None, "--message", "-m", help="提交信息"),
+):
+    """推送到远程"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from huaqi.core.sync import UserGitSync
+    
+    sync = UserGitSync(DATA_DIR, user_id)
+    
+    if sync.push():
+        console.print("[green]✓ 推送成功[/green]")
+    else:
+        console.print("[red]推送失败[/red]")
+
+
+@sync_app.command("pull")
+def sync_pull():
+    """从远程拉取"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from huaqi.core.sync import UserGitSync
+    
+    sync = UserGitSync(DATA_DIR, user_id)
+    
+    if sync.pull():
+        console.print("[green]✓ 拉取成功[/green]")
+    else:
+        console.print("[red]拉取失败[/red]")
+
+
+@sync_app.command("sync")
+def sync_full():
+    """完整同步 (pull + push)"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from huaqi.core.sync import UserGitSync
+    
+    sync = UserGitSync(DATA_DIR, user_id)
+    
+    if sync.sync():
+        console.print("[green]✓ 同步成功[/green]")
+    else:
+        console.print("[red]同步失败[/red]")
+
+
+# ========== 导出/导入命令 ==========
+
+export_app = typer.Typer(name="export", help="数据导出")
+app.add_typer(export_app, name="export")
+
+
+@export_app.command("all")
+def export_all(
+    output: Path = typer.Option(None, "--output", "-o", help="输出文件路径"),
+):
+    """导出所有数据"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from datetime import datetime
+    import tarfile
+    
+    # 默认文件名
+    if not output:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output = Path(f"huaqi_export_{user_id[:8]}_{timestamp}.tar.gz")
+    
+    user_dir = DATA_DIR / "users_data" / user_id
+    
+    # 创建压缩包
+    with tarfile.open(output, "w:gz") as tar:
+        tar.add(user_dir, arcname=user_id)
+    
+    console.print(f"[green]✓ 数据已导出到: {output}[/green]")
+    console.print(f"[dim]文件大小: {output.stat().st_size / 1024 / 1024:.2f} MB[/dim]")
+
+
+@export_app.command("markdown")
+def export_markdown(
+    output: Path = typer.Option(None, "--output", "-o", help="输出目录"),
+):
+    """导出 Markdown 文件"""
+    ensure_initialized()
+    user_id = require_login()
+    
+    from shutil import copytree
+    
+    if not output:
+        output = Path(f"huaqi_markdown_{user_id[:8]}")
+    
+    memory_dir = DATA_DIR / "users_data" / user_id / "memory"
+    
+    if memory_dir.exists():
+        copytree(memory_dir, output, dirs_exist_ok=True)
+        console.print(f"[green]✓ Markdown 文件已导出到: {output}[/green]")
+    else:
+        console.print("[red]没有找到记忆数据[/red]")
 
 
 # ========== 技能命令 ==========
