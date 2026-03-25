@@ -5,7 +5,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Iterator, Optional, List, Dict, Any, Callable
+from typing import Iterator, Optional, List, Dict, Any, Callable, Union
 from enum import Enum
 import time
 import json
@@ -348,7 +348,7 @@ class LLMManager:
         config = self._configs[provider_name]
         self._active_provider = self._providers[provider_name](config)
     
-    def chat(self, messages: List[Message], stream: bool = False, **kwargs) -> LLMResponse | Iterator[str]:
+    def chat(self, messages: List[Message], stream: bool = False, **kwargs) -> Union[LLMResponse, Iterator[str]]:
         """对话
         
         Args:
