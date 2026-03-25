@@ -15,7 +15,9 @@ from .llm import LLMManager, Message, LLMResponse, init_llm_manager
 from .memory_extractor import MemoryExtractor, SimpleMemoryExtractor
 from ..memory.storage.user_isolated import UserMemoryManager
 from ..memory.storage.markdown_store import MarkdownMemoryStore
-from ..memory.storage.vector_store import UserVectorStore, OpenAIEmbedding, DummyEmbedding
+from ..memory.storage.memory_manager_v2 import MemoryManagerV2
+from ..memory.search.hybrid_search import HybridSearch
+from ..memory.search.text_search import TextSearch
 
 
 
@@ -98,8 +100,8 @@ class ConversationManager:
         self._current_session: Optional[ConversationSession] = None
         self._system_prompt: Optional[str] = None
         
-        # 初始化向量存储
-        self._init_vector_store()
+        # 初始化新搜索系统（无 Embedding）
+        self._init_search_engine()
         
         # 初始化记忆提取器
         self.memory_extractor = MemoryExtractor(
@@ -110,35 +112,23 @@ class ConversationManager:
         # 加载配置
         self._load_config()
     
-    def _init_vector_store(self):
-        """初始化向量存储"""
-        try:
-            # 尝试使用 OpenAI Embedding
-            config = self.config_manager.load_config(self.user_id)
-            active_llm = config.llm_providers.get(config.llm_default_provider)
-            
-            if active_llm and active_llm.api_key:
-                embedding_provider = OpenAIEmbedding(
-                    api_key=active_llm.api_key,
-                    model=config.memory.embedding_model
-                )
-            else:
-                # 使用虚拟 Embedding
-                embedding_provider = DummyEmbedding()
-            
-            self.vector_store = UserVectorStore(
-                base_dir=self.config_manager.get_user_data_dir(self.user_id).parent.parent,
-                user_id=self.user_id,
-                embedding_provider=embedding_provider
+    def _init_search_engine(self):
+        """初始化搜索引擎（无 Embedding）"""
+        from ..memory.search.hybrid_search import HybridSearch
+        from ..memory.search.text_search import TextSearch
+        
+        # 如果有 LLM，使用混合搜索
+        if self.llm_manager.get_active_provider():
+            self.search_engine = HybridSearch(
+                self.llm_manager,
+                text_algorithm="bm25"
             )
-            
-        except Exception:
-            # 失败时使用虚拟 Embedding
-            self.vector_store = UserVectorStore(
-                base_dir=self.config_manager.get_user_data_dir(self.user_id).parent.parent,
-                user_id=self.user_id,
-                embedding_provider=DummyEmbedding()
-            )
+        else:
+            # 无 LLM 时使用纯文本搜索
+            self.search_engine = TextSearch(algorithm="bm25")
+        
+        # 加载历史记忆到搜索索引
+        self._build_search_index()
     
     def _load_config(self):
         """加载配置"""
@@ -225,26 +215,66 @@ class ConversationManager:
         
         return None
     
-    def _retrieve_relevant_memories(self, query: str, top_k: int = 3) -> Optional[str]:
-        """检索相关记忆"""
+    def _build_search_index(self):
+        """构建搜索索引（从现有记忆文件）"""
         try:
-            results = self.vector_store.search_memories(query, top_k=top_k)
+            # 加载所有 Markdown 记忆文件
+            memory_dir = self.memory_manager.user_memory_dir
+            if not memory_dir.exists():
+                return
+            
+            count = 0
+            for md_file in memory_dir.rglob("*.md"):
+                try:
+                    with open(md_file, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    
+                    # 解析 frontmatter 和正文
+                    from ..memory.storage.markdown_store import MarkdownMemoryStore
+                    store = MarkdownMemoryStore(Path("/tmp"))
+                    frontmatter, body = store._parse_frontmatter(content)
+                    
+                    if body.strip():
+                        self.search_engine.add_document(
+                            content=body,
+                            metadata={
+                                "filepath": str(md_file),
+                                "type": frontmatter.get("type", "note"),
+                            }
+                        )
+                        count += 1
+                except:
+                    continue
+            
+            if count > 0:
+                print(f"[记忆索引] 已加载 {count} 条记忆")
+                
+        except Exception as e:
+            print(f"[记忆索引] 构建失败: {e}")
+    
+    def _retrieve_relevant_memories(self, query: str, top_k: int = 3) -> Optional[str]:
+        """检索相关记忆（使用新搜索架构）"""
+        try:
+            # 使用混合搜索
+            results = self.search_engine.search(query, top_k=top_k)
             
             if not results:
                 return None
             
             memories_text = []
             for i, result in enumerate(results, 1):
-                content = result.get("content", "")
-                score = result.get("score", 0)
+                content = result.content
+                score = result.score
                 
                 # 只取高相关度的记忆
-                if score >= 0.7:
+                if score >= 0.5:  # 降低阈值以适应新的评分体系
                     memories_text.append(f"{i}. {content[:200]}...")
             
             return "\n".join(memories_text) if memories_text else None
             
-        except Exception:
+        except Exception as e:
+            # 出错时返回空，不影响对话
+            print(f"[记忆检索] 失败: {e}")
             return None
     
     def start_session(self) -> ConversationSession:

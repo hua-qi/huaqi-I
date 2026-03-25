@@ -333,49 +333,61 @@ def memory_init(
 @memory_app.command("search")
 def memory_search(
     query: str,
-    semantic: bool = typer.Option(False, "--semantic", "-s", help="使用语义搜索（需要配置向量库）"),
+    search_type: str = typer.Option("hybrid", "--type", "-t", 
+                                    help="搜索类型: hybrid(混合)/text(文本)/llm(LLM)"),
     top_k: int = typer.Option(5, "--top-k", "-k", help="返回结果数量"),
+    explain: bool = typer.Option(False, "--explain", "-e", help="显示搜索解释"),
 ):
-    """搜索记忆（关键词或语义）"""
+    """搜索记忆（新架构 - 无需 Embedding）"""
     ensure_initialized()
     user_id = require_login()
     
-    if semantic:
-        # 语义搜索
-        try:
-            from huaqi.memory.storage.vector_store import UserVectorStore, DummyEmbedding
-            from huaqi.core.config import DATA_DIR
-            
-            vector_store = UserVectorStore(DATA_DIR, user_id, embedding_provider=DummyEmbedding())
-            results = vector_store.search_memories(query, top_k=top_k)
-            
-            if results:
-                console.print(f"[bold]语义搜索找到 {len(results)} 条相关记忆:[/bold]\n")
-                for i, result in enumerate(results, 1):
-                    score = result.get("score", 0)
-                    content = result.get("content", "")[:150]
-                    source = result.get("metadata", {}).get("source", "未知")
-                    
-                    console.print(f"{i}. [dim](相关度: {score:.2f})[/dim]")
-                    console.print(f"   {content}...")
-                    console.print(f"   [dim]来源: {source}[/dim]\n")
-            else:
-                console.print("未找到相关记忆")
-                
-        except Exception as e:
-            console.print(f"[red]语义搜索失败: {e}[/red]")
-            console.print("[dim]提示: 请先索引记忆文件[/dim]")
-    else:
-        # 关键词搜索
-        memory_manager = UserMemoryManager(_config_manager, user_id)
-        results = memory_manager.search_memories(query)
+    console.print(f"[dim]使用 {search_type} 搜索...[/dim]\n")
+    
+    try:
+        from huaqi.memory.storage.memory_manager_v2 import MemoryManagerV2
+        from huaqi.core.llm import init_llm_manager
+        
+        # 初始化记忆管理器（V2）
+        llm_manager = init_llm_manager()
+        memory_mgr = MemoryManagerV2(DATA_DIR, user_id, llm_manager)
+        
+        # 执行搜索
+        results = memory_mgr.search(
+            query=query,
+            search_type=search_type,
+            top_k=top_k
+        )
         
         if results:
-            console.print(f"[bold]找到 {len(results)} 条记忆:[/bold]\n")
-            for result in results[:10]:
-                console.print(f"  📄 {result['path']}")
+            console.print(f"[bold]找到 {len(results)} 条相关记忆:[/bold]\n")
+            
+            for i, result in enumerate(results, 1):
+                content = result.get("content", "")[:200]
+                score = result.get("score", 0)
+                method = result.get("search_method", "unknown")
+                
+                console.print(f"{i}. [dim]({method}, 分数: {score:.3f})[/dim]")
+                console.print(f"   {content}...")
+                
+                # 显示详细解释
+                if explain:
+                    if "text_score" in result:
+                        console.print(f"   [dim]  BM25: {result['text_score']:.3f}[/dim]")
+                    if "llm_score" in result:
+                        console.print(f"   [dim]  LLM: {result['llm_score']:.3f}[/dim]")
+                    if "matched_terms" in result:
+                        console.print(f"   [dim]  匹配词: {', '.join(result['matched_terms'][:5])}[/dim]")
+                
+                console.print()
         else:
-            console.print("未找到相关记忆")
+            console.print("[yellow]未找到相关记忆[/yellow]")
+            console.print("[dim]提示: 你可以先用 `huaqi memory init` 创建初始记忆[/dim]")
+            
+    except Exception as e:
+        console.print(f"[red]搜索失败: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
 
 @memory_app.command("status")
