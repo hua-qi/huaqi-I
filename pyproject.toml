@@ -32,6 +32,23 @@ dependencies = [
     "gitpython>=3.1.0",
     "python-dotenv>=1.0.0",
     "click>=8.0.0",
+    # LangGraph Agent 架构
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    # 定时任务
+    "apscheduler>=4.0.0a",
+    # 向量存储
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
+    "rank-bm25>=0.2.0",
+    # 数据获取
+    "aiohttp>=3.9.0",
+    "feedparser>=6.0.0",
+    # 配置热重载
+    "watchdog>=4.0.0",
+    # 结构化日志
+    "structlog>=24.0.0",
 ]
 
 [project.optional-dependencies]
