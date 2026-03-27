@@ -30,25 +30,34 @@ class XiaoHongShuPublisher(BasePublisher):
         self.api_token = self.config.get("api_token") or os.getenv("XIAOHONGSHU_TOKEN")
         self.enable_auto_publish = self.config.get("auto_publish", False) and bool(self.api_token)
     
-    async def publish(self, item: ContentItem) -> bool:
+    async def publish(self, item: ContentItem, dry_run: bool = False) -> bool:
         """发布内容到小红书
         
         当前实现: 保存为草稿文件
         未来: 支持 API 自动发布
+        
+        Args:
+            item: 内容条目
+            dry_run: 如果为 True，只保存草稿不更新状态
         """
         try:
-            if self.enable_auto_publish:
+            if self.enable_auto_publish and not dry_run:
                 return await self._auto_publish(item)
             else:
-                return await self._save_draft(item)
+                return await self._save_draft(item, dry_run=dry_run)
                 
         except Exception as e:
             print(f"[XiaoHongShu] 发布失败: {e}")
             item.status = ContentStatus.FAILED
             return False
     
-    async def _save_draft(self, item: ContentItem) -> bool:
-        """保存为草稿文件"""
+    async def _save_draft(self, item: ContentItem, dry_run: bool = False) -> bool:
+        """保存为草稿文件
+        
+        Args:
+            item: 内容条目
+            dry_run: 如果为 True，不更新 item 状态
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{timestamp}_{item.id[:8]}.md"
         filepath = self.draft_dir / filename
@@ -74,7 +83,8 @@ class XiaoHongShuPublisher(BasePublisher):
         with open(meta_filepath, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
         
-        item.status = ContentStatus.PUBLISHED  # 标记为已处理
+        if not dry_run:
+            item.status = ContentStatus.PUBLISHED  # 标记为已处理
         print(f"[XiaoHongShu] 草稿已保存: {filepath}")
         return True
     

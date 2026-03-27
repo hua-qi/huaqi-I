@@ -48,13 +48,22 @@ class TaskHandlers:
         """内容流水线任务
         
         定时监控数据源并生成内容
+        支持人工审核机制
         """
-        sources = kwargs.get("sources", [])
-        print(f"[Task] 内容流水线 - 监控 {len(sources)} 个源")
+        from .pipeline_job import PipelineJobManager
         
-        # TODO: 调用 Content Pipeline
-        for source in sources:
-            print(f"  - 检查 {source}")
+        limit = kwargs.get("limit", 5)
+        auto_publish = kwargs.get("auto_publish", False)
+        
+        print(f"[Task] 内容流水线 - 自动发布: {auto_publish}")
+        
+        manager = PipelineJobManager()
+        manager.auto_publish = auto_publish
+        
+        await manager.run_pipeline(
+            limit=limit,
+            require_review=not auto_publish,
+        )
     
     @staticmethod
     async def personality_update(**kwargs):
@@ -161,6 +170,15 @@ default_scheduler_config = {
             "id": "git_sync",
             "task": "git_auto_sync",
             "cron": "0 */6 * * *",  # 每6小时
+        },
+        {
+            "id": "content_pipeline",
+            "task": "content_pipeline",
+            "cron": "0 10,16 * * *",  # 每天10点和16点
+            "params": {
+                "limit": 3,
+                "auto_publish": False,  # 默认需要人工审核
+            },
         },
     ]
 }

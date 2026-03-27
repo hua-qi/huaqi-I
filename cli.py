@@ -1133,6 +1133,88 @@ def pipeline_drafts(
     console.print()
 
 
+@pipeline_app.command("review")
+def pipeline_review(
+    task_id: str = typer.Argument(None, help="任务ID，不提供则列出所有待审核任务"),
+    approve: int = typer.Option(None, "--approve", "-a", help="通过指定索引的内容"),
+    reject: int = typer.Option(None, "--reject", "-r", help="拒绝指定索引的内容"),
+    publish: bool = typer.Option(False, "--publish", "-p", help="发布已审核通过的内容"),
+):
+    """审核待发布内容"""
+    ensure_initialized()
+    
+    from huaqi.scheduler.pipeline_job import PipelineJobManager
+    
+    manager = PipelineJobManager()
+    
+    # 如果没有指定 task_id，列出所有待审核任务
+    if task_id is None:
+        reviews = manager.list_pending_reviews()
+        
+        if not reviews:
+            console.print("\n[dim]暂无待审核任务[/dim]\n")
+            return
+        
+        console.print("\n[bold cyan]📋 待审核任务列表[/bold cyan]\n")
+        
+        for review in reviews:
+            console.print(f"[cyan]{review['task_id']}[/cyan]")
+            console.print(f"  创建时间: {review['created_at']}")
+            console.print(f"  待审核: {review['pending_count']}/{review['total_count']} 条")
+            console.print(f"  命令: huaqi pipeline review {review['task_id']}\n")
+        
+        return
+    
+    # 获取指定任务的待审核内容
+    task_data = manager.get_pending_task(task_id)
+    
+    if task_data is None:
+        console.print(f"\n[red]未找到任务: {task_id}[/red]\n")
+        return
+    
+    items = task_data.get("items", [])
+    
+    # 执行审核操作
+    if approve is not None:
+        if manager.approve_item(task_id, approve):
+            console.print(f"\n[green]✅ 已通过项目 {approve}[/green]\n")
+        else:
+            console.print(f"\n[red]❌ 操作失败[/red]\n")
+        return
+    
+    if reject is not None:
+        if manager.reject_item(task_id, reject):
+            console.print(f"\n[red]❌ 已拒绝项目 {reject}[/red]\n")
+        else:
+            console.print(f"\n[red]❌ 操作失败[/red]\n")
+        return
+    
+    # 发布已审核内容
+    if publish:
+        import asyncio
+        count = asyncio.run(manager.publish_approved(task_id))
+        console.print(f"\n[green]✅ 已发布 {count} 条内容[/green]\n")
+        return
+    
+    # 显示任务详情
+    console.print(f"\n[bold cyan]📋 任务详情: {task_id}[/bold cyan]\n")
+    
+    for i, item in enumerate(items):
+        status = item.get("status", "pending")
+        status_icon = "⏳" if status == "pending" else "✅" if status == "approved" else "❌"
+        
+        console.print(f"{i}. {status_icon} [{status}]")
+        console.print(f"   草稿: {Path(item.get('draft_path', 'N/A')).name}")
+        console.print(f"   创建: {item.get('created_at')}")
+        
+        if status == "pending":
+            console.print(f"   [dim]操作: -a {i} 通过 | -r {i} 拒绝[/dim]")
+        
+        console.print()
+    
+    console.print("[dim]使用 --publish 发布已审核通过的内容[/dim]\n")
+
+
 # ============ Daemon 后台服务 ============
 
 @app.command("daemon")

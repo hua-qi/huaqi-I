@@ -73,16 +73,20 @@ class ContentPipeline:
         print(f"   处理完成: {len([r for r in processed if r.success])}/{len(processed)}")
         
         # 3. 发布内容
-        if not dry_run and self.publisher:
-            print("\n📤 步骤 3: 发布内容")
+        if self.publisher:
             ready_items = [
                 r.item for r in processed
                 if r.success and r.item.status == ContentStatus.READY
             ]
-            published = await self._publish_all(ready_items)
-            print(f"   发布完成: {published}/{len(ready_items)}")
-        elif dry_run:
-            print("\n📝 步骤 3: [预览模式] 跳过发布")
+            
+            if dry_run:
+                # 预览模式：保存草稿但不发布
+                print("\n📝 步骤 3: [预览模式] 保存草稿")
+                await self._publish_all(ready_items, dry_run=True)
+            else:
+                print("\n📤 步骤 3: 发布内容")
+                published = await self._publish_all(ready_items, dry_run=False)
+                print(f"   发布完成: {published}/{len(ready_items)}")
         
         # 输出统计
         print("\n" + "=" * 50)
@@ -148,15 +152,29 @@ class ContentPipeline:
             stage="complete",
         )
     
-    async def _publish_all(self, items: List[ContentItem]) -> int:
-        """发布所有内容"""
+    async def _publish_all(self, items: List[ContentItem], dry_run: bool = False) -> int:
+        """发布所有内容
+        
+        Args:
+            items: 内容列表
+            dry_run: 如果为 True，只保存草稿不发布
+        """
         published = 0
         
         for item in items:
             try:
-                if await self.publisher.publish(item):
-                    published += 1
-                    self.stats["published"] += 1
+                # 检查 publisher 是否支持 dry_run 参数
+                if hasattr(self.publisher, 'publish') and 'dry_run' in self.publisher.publish.__code__.co_varnames:
+                    if await self.publisher.publish(item, dry_run=dry_run):
+                        published += 1
+                        if not dry_run:
+                            self.stats["published"] += 1
+                else:
+                    # 不支持 dry_run 的 publisher
+                    if not dry_run:
+                        if await self.publisher.publish(item):
+                            published += 1
+                            self.stats["published"] += 1
             except Exception as e:
                 print(f"   ✗ 发布失败 [{item.id}]: {e}")
         
