@@ -85,6 +85,61 @@ from huaqi.core.git_auto_commit import GitAutoCommit
 from huaqi.core.llm import LLMConfig, Message, LLMManager
 from huaqi.memory.storage.markdown_store import MarkdownMemoryStore
 
+def _run_langgraph_chat():
+    """运行 LangGraph Agent 对话模式"""
+    try:
+        from huaqi.agent import ChatAgent
+        
+        console.print("\n[bold magenta]🌸 Huaqi Agent[/bold magenta] - 智能 AI 同伴")
+        console.print("[dim]使用 LangGraph Agent 架构 | 输入 /help 查看命令, exit 退出对话[/dim]\n")
+        
+        agent = ChatAgent()
+        
+        while True:
+            try:
+                user_input = _prompt_input().strip()
+                
+                if not user_input:
+                    continue
+                
+                if user_input.lower() in ("exit", "quit", "退出"):
+                    console.print("\n[dim]👋 再见！[/dim]\n")
+                    break
+                
+                if user_input == "/help":
+                    console.print("\n[bold cyan]📚 可用命令[/bold cyan]")
+                    console.print("  /reset - 重置会话")
+                    console.print("  /state - 查看当前状态")
+                    console.print("  /help - 显示帮助")
+                    console.print("  exit/quit - 退出对话\n")
+                    continue
+                
+                if user_input == "/reset":
+                    agent = ChatAgent()
+                    console.print("[dim]会话已重置[/dim]\n")
+                    continue
+                
+                if user_input == "/state":
+                    state = agent.get_state()
+                    console.print(f"\n[dim]当前状态: {state.get('current_node', 'unknown')}[/dim]\n")
+                    continue
+                
+                # 使用 Agent 处理
+                response = agent.run(user_input)
+                console.print(f"\n[bold magenta]🌸 Huaqi[/bold magenta]: {response}\n")
+                
+            except KeyboardInterrupt:
+                console.print("\n\n[dim]已中断[/dim]\n")
+                break
+            except EOFError:
+                console.print("\n\n[dim]再见！[/dim]\n")
+                break
+                
+    except ImportError as e:
+        console.print(f"[red]LangGraph Agent 不可用: {e}[/red]")
+        console.print("[dim]回退到传统模式...[/dim]\n")
+        chat_mode()
+
 console = Console()
 app = typer.Typer(
     name="huaqi",
@@ -960,7 +1015,8 @@ def chat_command(
     ensure_initialized()
     
     if use_langgraph:
-        _chat_langgraph_mode()
+        # LangGraph Agent 模式
+        _run_langgraph_chat()
     else:
         chat_mode()
 
@@ -988,6 +1044,93 @@ def main(
     # 如果没有子命令，进入对话模式
     if ctx.invoked_subcommand is None:
         chat_mode()
+
+
+# ============ Pipeline 内容流水线 ============
+
+pipeline_app = typer.Typer(name="pipeline", help="内容流水线 - X/RSS 采集 → 小红书发布")
+app.add_typer(pipeline_app)
+
+
+@pipeline_app.command("run")
+def pipeline_run(
+    dry_run: bool = typer.Option(False, "--dry-run", "-d", help="预览模式，不实际发布"),
+    limit: int = typer.Option(5, "--limit", "-n", help="每个源采集数量"),
+    source: str = typer.Option("all", "--source", "-s", help="数据源: x/rss/all"),
+):
+    """执行内容流水线"""
+    ensure_initialized()
+    
+    import asyncio
+    from huaqi.pipeline import create_default_pipeline
+    
+    console.print("\n[bold cyan]🚀 启动内容流水线[/bold cyan]\n")
+    
+    async def _run():
+        pipeline = create_default_pipeline()
+        
+        # 根据 source 参数筛选
+        if source != "all":
+            from huaqi.pipeline.sources import XMockSource, RSSMockSource
+            pipeline.sources = [
+                s for s in pipeline.sources 
+                if (source == "x" and isinstance(s, XMockSource)) or
+                   (source == "rss" and isinstance(s, RSSMockSource))
+            ]
+        
+        stats = await pipeline.run(limit=limit, dry_run=dry_run)
+        return stats
+    
+    try:
+        stats = asyncio.run(_run())
+        
+        console.print("\n[bold green]✅ 流水线执行完成[/bold green]")
+        console.print(f"  采集: {stats.get('fetched', 0)} 条")
+        console.print(f"  处理: {stats.get('processed', 0)} 条")
+        console.print(f"  发布: {stats.get('published', 0)} 条")
+        console.print(f"  失败: {stats.get('failed', 0)} 条\n")
+        
+        if dry_run:
+            console.print("[dim]💡 预览模式，内容未实际发布[/dim]")
+            console.print("[dim]   去掉 --dry-run 参数即可发布[/dim]\n")
+            
+    except Exception as e:
+        console.print(f"\n[red]❌ 流水线执行失败: {e}[/red]\n")
+
+
+@pipeline_app.command("preview")
+def pipeline_preview(
+    item_id: str = typer.Argument(..., help="内容 ID 或关键词"),
+):
+    """预览指定内容的处理结果"""
+    console.print("\n[yellow]预览功能开发中...[/yellow]\n")
+
+
+@pipeline_app.command("drafts")
+def pipeline_drafts(
+    limit: int = typer.Option(10, "--limit", "-n", help="显示数量"),
+):
+    """查看已生成的草稿"""
+    ensure_initialized()
+    
+    from huaqi.pipeline.platforms import XiaoHongShuPublisher
+    
+    publisher = XiaoHongShuPublisher()
+    drafts = publisher.list_drafts()
+    
+    if not drafts:
+        console.print("\n[dim]暂无草稿[/dim]\n")
+        return
+    
+    console.print(f"\n[bold cyan]📝 草稿列表 ({len(drafts)} 篇)[/bold cyan]\n")
+    
+    for i, draft in enumerate(drafts[:limit], 1):
+        console.print(f"{i}. [cyan]{draft['created']}[/cyan] - {draft['filename']}")
+    
+    if len(drafts) > limit:
+        console.print(f"\n[dim]...还有 {len(drafts) - limit} 篇[/dim]")
+    
+    console.print()
 
 
 # ============ Daemon 后台服务 ============
@@ -1082,4 +1225,4 @@ def daemon_command(
 
 
 if __name__ == "__main__":
-    app()"}
+    app()
