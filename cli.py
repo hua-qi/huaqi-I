@@ -1306,5 +1306,226 @@ def daemon_command(
         console.print("可用操作: start, stop, status, list\n")
 
 
+# ============ Personality 人格画像更新 ============
+
+personality_app = typer.Typer(name="personality", help="人格画像管理")
+app.add_typer(personality_app)
+
+
+@personality_app.command("update")
+def personality_update(
+    days: int = typer.Option(7, "--days", "-d", help="分析最近几天的日记"),
+):
+    """分析日记并生成画像更新提案"""
+    ensure_initialized()
+    
+    from huaqi.core.personality_updater import PersonalityUpdater
+    
+    updater = PersonalityUpdater()
+    proposal = updater.analyze_recent(days=days)
+    
+    if proposal is None:
+        console.print("\n[dim]未检测到显著的画像变化[/dim]\n")
+        return
+    
+    console.print("\n[bold cyan]📊 人格画像更新提案[/bold cyan]\n")
+    console.print(updater.get_update_summary(proposal))
+    
+    console.print(f"\n使用以下命令查看详情：")
+    console.print(f"  huaqi personality review {proposal.id}")
+    console.print()
+
+
+@personality_app.command("review")
+def personality_review(
+    proposal_id: str = typer.Argument(None, help="提案ID，不提供则列出待审核提案"),
+    approve: bool = typer.Option(False, "--approve", "-a", help="批准提案"),
+    reject: bool = typer.Option(False, "--reject", "-r", help="拒绝提案"),
+    notes: str = typer.Option(None, "--notes", "-n", help="备注"),
+):
+    """查看或审核画像更新提案"""
+    ensure_initialized()
+    
+    from huaqi.core.personality_updater import PersonalityUpdater
+    
+    updater = PersonalityUpdater()
+    
+    # 列出待审核提案
+    if proposal_id is None:
+        proposals = updater.list_pending_proposals()
+        
+        if not proposals:
+            console.print("\n[dim]暂无待审核的画像更新提案[/dim]\n")
+            return
+        
+        console.print("\n[bold cyan]📋 待审核提案列表[/bold cyan]\n")
+        
+        for p in proposals:
+            console.print(f"[cyan]{p.id}[/cyan]")
+            console.print(f"  创建时间: {p.created_at.strftime('%Y-%m-%d %H:%M')}")
+            console.print(f"  变化项: {len(p.changes)} 项")
+            console.print(f"  查看: huaqi personality review {p.id}\n")
+        
+        return
+    
+    # 获取指定提案
+    proposal = updater.get_proposal(proposal_id)
+    
+    if proposal is None:
+        console.print(f"\n[red]未找到提案: {proposal_id}[/red]\n")
+        return
+    
+    # 批准提案
+    if approve:
+        if updater.approve_proposal(proposal_id, notes):
+            console.print("\n[green]✅ 已批准并应用画像更新[/green]\n")
+        else:
+            console.print("\n[red]❌ 操作失败[/red]\n")
+        return
+    
+    # 拒绝提案
+    if reject:
+        if updater.reject_proposal(proposal_id, notes):
+            console.print("\n[red]❌ 已拒绝画像更新提案[/red]\n")
+        else:
+            console.print("\n[red]❌ 操作失败[/red]\n")
+        return
+    
+    # 显示提案详情
+    console.print("\n[bold cyan]📊 提案详情[/bold cyan]\n")
+    console.print(updater.get_update_summary(proposal))
+    
+    if proposal.status == "pending":
+        console.print("\n[dim]操作选项:[/dim]")
+        console.print(f"  --approve (-a)  批准并应用更新")
+        console.print(f"  --reject (-r)   拒绝更新")
+        console.print(f"  --notes (-n)    添加备注")
+    console.print()
+
+
+@personality_app.command("show")
+def personality_show():
+    """显示当前人格画像"""
+    ensure_initialized()
+    
+    from huaqi.core.personality_simple import PersonalityEngine
+    
+    engine = PersonalityEngine(DATA_DIR / "memory")
+    profile = engine.profile
+    
+    console.print("\n[bold cyan]👤 当前人格画像[/bold cyan]\n")
+    
+    table = Table(show_header=False, box=box.ROUNDED)
+    table.add_column(style="cyan", width=15)
+    table.add_column()
+    
+    table.add_row("名称", profile.name)
+    table.add_row("角色", profile.role)
+    table.add_row("版本", profile.version)
+    table.add_row("", "")
+    table.add_row("开放度", f"{profile.openness:.2f}")
+    table.add_row("责任心", f"{profile.conscientiousness:.2f}")
+    table.add_row("外向性", f"{profile.extraversion:.2f}")
+    table.add_row("宜人性", f"{profile.agreeableness:.2f}")
+    table.add_row("情绪稳定性", f"{profile.neuroticism:.2f}")
+    table.add_row("", "")
+    table.add_row("沟通风格", profile.tone)
+    table.add_row("正式程度", f"{profile.formality:.2f}")
+    table.add_row("共情水平", f"{profile.empathy:.2f}")
+    
+    console.print(table)
+    console.print()
+
+
+# ============ System 系统管理 ============
+
+system_app = typer.Typer(name="system", help="系统管理")
+app.add_typer(system_app)
+
+
+@system_app.command("migrate")
+def system_migrate(
+    dry_run: bool = typer.Option(False, "--dry-run", "-d", help="预览模式"),
+    skip_backup: bool = typer.Option(False, "--skip-backup", help="跳过备份（不推荐）"),
+):
+    """执行数据迁移 v3 -> v4"""
+    import subprocess
+    import sys
+    
+    script_path = Path(__file__).parent / "scripts" / "migrate_v3_to_v4.py"
+    
+    if not script_path.exists():
+        console.print("[red]迁移脚本不存在[/red]")
+        return
+    
+    cmd = [sys.executable, str(script_path)]
+    
+    if dry_run:
+        cmd.append("--dry-run")
+    if skip_backup:
+        cmd.append("--skip-backup")
+    
+    console.print("\n[bold cyan]🔄 执行数据迁移...[/bold cyan]\n")
+    
+    result = subprocess.run(cmd, capture_output=False)
+    
+    if result.returncode == 0:
+        console.print("\n[green]✅ 迁移完成[/green]\n")
+    else:
+        console.print("\n[red]❌ 迁移失败[/red]\n")
+
+
+@system_app.command("hot-reload")
+def system_hot_reload(
+    action: str = typer.Argument("status", help="操作: start/stop/status"),
+):
+    """管理配置热重载"""
+    ensure_initialized()
+    
+    from huaqi.core.config_hot_reload import get_hot_reload, init_hot_reload
+    
+    if action == "start":
+        hot_reload = get_hot_reload()
+        if hot_reload and hot_reload._running:
+            console.print("[yellow]热重载已在运行中[/yellow]\n")
+            return
+        
+        init_hot_reload(_config)
+        console.print("[green]✅ 配置热重载已启动[/green]\n")
+    
+    elif action == "stop":
+        hot_reload = get_hot_reload()
+        if hot_reload:
+            hot_reload.stop()
+            console.print("[dim]热重载已停止[/dim]\n")
+        else:
+            console.print("[dim]热重载未运行[/dim]\n")
+    
+    elif action == "status":
+        hot_reload = get_hot_reload()
+        if hot_reload and hot_reload._running:
+            console.print("[green]● 热重载运行中[/green]\n")
+        else:
+            console.print("[dim]○ 热重载未运行[/dim]\n")
+
+
+@system_app.command("backup")
+def system_backup():
+    """创建数据备份"""
+    from datetime import datetime
+    import shutil
+    
+    backup_dir = DATA_DIR / "backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    memory_dir = DATA_DIR / "memory"
+    
+    if memory_dir.exists():
+        shutil.copytree(memory_dir, backup_dir / "memory", dirs_exist_ok=True)
+        console.print(f"\n[green]✅ 备份已创建: {backup_dir}[/green]\n")
+    else:
+        console.print("\n[yellow]无数据可备份[/yellow]\n")
+
+
 if __name__ == "__main__":
     app()

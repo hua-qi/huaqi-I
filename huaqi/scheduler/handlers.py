@@ -69,12 +69,23 @@ class TaskHandlers:
     async def personality_update(**kwargs):
         """人格画像更新
         
-        定期分析日记，更新用户画像
+        定期分析日记，生成更新提案（需人工确认）
         """
+        from ..core.personality_updater import PersonalityUpdater
+        
         print(f"[Task] 人格画像更新 - {datetime.now()}")
         
-        # TODO: 调用 Insight Workflow
-        print("🧠 分析用户画像变化...")
+        days = kwargs.get("days", 7)
+        min_confidence = kwargs.get("min_confidence", 0.6)
+        
+        updater = PersonalityUpdater()
+        proposal = updater.analyze_recent(days=days, min_confidence=min_confidence)
+        
+        if proposal:
+            print(f"[Task] 检测到 {len(proposal.changes)} 项画像变化")
+            print(f"[Task] 使用 'huaqi personality review {proposal.id}' 查看详情")
+        else:
+            print("[Task] 未检测到显著画像变化")
     
     @staticmethod
     async def weekly_review(**kwargs):
@@ -178,6 +189,15 @@ default_scheduler_config = {
             "params": {
                 "limit": 3,
                 "auto_publish": False,  # 默认需要人工审核
+            },
+        },
+        {
+            "id": "personality_analysis",
+            "task": "personality_update",
+            "cron": "0 3 * * 0",  # 每周日凌晨3点
+            "params": {
+                "days": 7,
+                "min_confidence": 0.6,
             },
         },
     ]
