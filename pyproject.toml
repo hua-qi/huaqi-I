@@ -23,10 +23,10 @@ classifiers = [
 requires-python = ">=3.9"
 dependencies = [
     "typer>=0.9.0",
+    "prompt-toolkit>=3.0.0",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-    "chromadb>=0.4.0",
     "openai>=1.0.0",
     "pyyaml>=6.0",
     "gitpython>=3.1.0",
@@ -45,11 +45,14 @@ dev = [
 ]
 
 [project.scripts]
-huaqi = "huaqi.interface.cli.main:app"
+huaqi = "cli:app"
+
+[tool.setuptools]
+py-modules = ["cli"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["huaqi*"]
+include = ["huaqi*", "cli"]
 
 [tool.black]
 line-length = 100

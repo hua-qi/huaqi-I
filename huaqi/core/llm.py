@@ -178,8 +178,10 @@ class OpenAIProvider(BaseLLMProvider):
             )
             
             for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta and delta.content:
+                        yield delta.content
                     
         except ImportError:
             raise ImportError("请先安装 openai: pip install openai")
