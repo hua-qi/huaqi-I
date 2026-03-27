@@ -952,6 +952,19 @@ def config_set(
 
 # ============ 主命令 ============
 
+@app.command("chat")
+def chat_command(
+    use_langgraph: bool = typer.Option(True, "--langgraph/--legacy", help="使用 LangGraph Agent 模式"),
+):
+    """启动对话模式 (新版 LangGraph Agent)"""
+    ensure_initialized()
+    
+    if use_langgraph:
+        _chat_langgraph_mode()
+    else:
+        chat_mode()
+
+
 @app.command("status")
 def show_status():
     """查看完整系统状态"""
