@@ -990,5 +990,96 @@ def main(
         chat_mode()
 
 
+# ============ Daemon 后台服务 ============
+
+@app.command("daemon")
+def daemon_command(
+    action: str = typer.Argument(..., help="操作: start/stop/status/list"),
+    foreground: bool = typer.Option(False, "--foreground", "-f", help="前台运行模式"),
+):
+    """管理后台定时任务服务"""
+    ensure_initialized()
+    
+    from huaqi.scheduler import get_scheduler_manager, register_default_jobs, default_scheduler_config
+    
+    scheduler = get_scheduler_manager()
+    
+    if action == "start":
+        if scheduler.is_running():
+            console.print("[yellow]⚠️ Daemon 已在运行中[/yellow]")
+            return
+        
+        # 注册默认任务
+        register_default_jobs(default_scheduler_config)
+        
+        # 启动调度器
+        scheduler.start()
+        
+        if foreground:
+            console.print("[green]✅ Daemon 已启动 (前台模式)[/green]")
+            console.print("[dim]按 Ctrl+C 停止[/dim]\n")
+            try:
+                # 保持运行
+                import time
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                scheduler.shutdown()
+                console.print("\n[dim]Daemon 已停止[/dim]")
+        else:
+            console.print("[green]✅ Daemon 已启动 (后台模式)[/green]")
+            console.print("[dim]使用 'huaqi daemon stop' 停止[/dim]\n")
+    
+    elif action == "stop":
+        if not scheduler.is_running():
+            console.print("[yellow]⚠️ Daemon 未在运行[/yellow]")
+            return
+        
+        scheduler.shutdown()
+        console.print("[green]✅ Daemon 已停止[/green]\n")
+    
+    elif action == "status":
+        if scheduler.is_running():
+            console.print("[green]● Daemon 运行中[/green]")
+            jobs = scheduler.list_jobs()
+            if jobs:
+                console.print(f"\n[bold]已注册任务 ({len(jobs)}):[/bold]")
+                for job in jobs:
+                    next_run = job.get("next_run_time", "N/A")
+                    console.print(f"  • {job['id']}: {job['trigger']}")
+                    console.print(f"    下次执行: {next_run}")
+            else:
+                console.print("\n[dim]暂无任务[/dim]")
+        else:
+            console.print("[dim]○ Daemon 未运行[/dim]")
+        console.print()
+    
+    elif action == "list":
+        jobs = scheduler.list_jobs()
+        if jobs:
+            table = Table(title="定时任务列表")
+            table.add_column("ID", style="cyan")
+            table.add_column("触发器", style="green")
+            table.add_column("下次执行", style="yellow")
+            
+            for job in jobs:
+                next_run = job.get("next_run_time", "N/A")
+                if next_run:
+                    next_run = str(next_run)[:19]
+                table.add_row(
+                    job["id"],
+                    job["trigger"],
+                    str(next_run),
+                )
+            console.print(table)
+        else:
+            console.print("[dim]暂无任务[/dim]")
+        console.print()
+    
+    else:
+        console.print(f"[red]❌ 未知操作: {action}[/red]")
+        console.print("可用操作: start, stop, status, list\n")
+
+
 if __name__ == "__main__":
-    app()
+    app()"}
