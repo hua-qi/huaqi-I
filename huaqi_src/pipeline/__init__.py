@@ -4,7 +4,7 @@
 并发布到小红书等平台。
 
 使用示例:
-    from huaqi.pipeline import create_default_pipeline
+    from huaqi_src.pipeline import create_default_pipeline
 
     pipeline = create_default_pipeline()
     await pipeline.run(limit=5)

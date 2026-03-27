@@ -32,7 +32,8 @@ class ChromaClient:
             embedding_function: 可选的自定义 embedding 函数
         """
         if persist_directory is None:
-            persist_directory = Path.home() / ".huaqi" / "vector_db"
+            from ...core.config_paths import get_vector_db_dir
+            persist_directory = get_vector_db_dir()
         
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(parents=True, exist_ok=True)

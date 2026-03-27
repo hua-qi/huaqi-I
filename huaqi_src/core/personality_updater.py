@@ -274,7 +274,8 @@ class PersonalityUpdater:
     
     def __init__(self, memory_dir: Path = None):
         if memory_dir is None:
-            memory_dir = Path.home() / ".huaqi" / "memory"
+            from .config_paths import get_memory_dir
+            memory_dir = get_memory_dir()
         self.memory_dir = memory_dir
         self.proposals_dir = memory_dir / "profile_updates"
         self.proposals_dir.mkdir(parents=True, exist_ok=True)

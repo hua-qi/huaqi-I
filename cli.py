@@ -76,19 +76,19 @@ def _prompt_input() -> str:
 
 
 # 核心模块
-from huaqi.core.config_simple import init_config_manager, ConfigManager
-from huaqi.core.personality_simple import PersonalityEngine
-from huaqi.core.hooks_simple import HookManager
-from huaqi.core.growth_simple import GrowthTracker
-from huaqi.core.diary_simple import DiaryStore
-from huaqi.core.git_auto_commit import GitAutoCommit
-from huaqi.core.llm import LLMConfig, Message, LLMManager
-from huaqi.memory.storage.markdown_store import MarkdownMemoryStore
+from huaqi_src.core.config_simple import init_config_manager, ConfigManager
+from huaqi_src.core.personality_simple import PersonalityEngine
+from huaqi_src.core.hooks_simple import HookManager
+from huaqi_src.core.growth_simple import GrowthTracker
+from huaqi_src.core.diary_simple import DiaryStore
+from huaqi_src.core.git_auto_commit import GitAutoCommit
+from huaqi_src.core.llm import LLMConfig, Message, LLMManager
+from huaqi_src.memory.storage.markdown_store import MarkdownMemoryStore
 
 def _run_langgraph_chat():
     """运行 LangGraph Agent 对话模式"""
     try:
-        from huaqi.agent import ChatAgent
+        from huaqi_src.agent import ChatAgent
         
         console.print("\n[bold magenta]🌸 Huaqi Agent[/bold magenta] - 智能 AI 同伴")
         console.print("[dim]使用 LangGraph Agent 架构 | 输入 /help 查看命令, exit 退出对话[/dim]\n")
@@ -941,7 +941,7 @@ def config_set_llm(
     """配置 LLM"""
     ensure_initialized()
     
-    from huaqi.core.config_simple import LLMProviderConfig
+    from huaqi_src.core.config_simple import LLMProviderConfig
     
     # 读取环境变量中的 API key
     if api_key is None and provider == "openai":
@@ -969,19 +969,87 @@ def config_set_llm(
 
 @config_app.command("set-data-dir")
 def config_set_data_dir(
-    path: Path = typer.Argument(..., help="数据目录路径"),
+    path: Path = typer.Argument(..., help="数据目录路径（如: ~/huaqi 或 /path/to/dir）"),
+    migrate: bool = typer.Option(True, "--migrate/--no-migrate", help="是否迁移现有数据"),
 ):
-    """配置数据存储地址"""
+    """配置数据存储地址（支持数据迁移）"""
+    global _config, DATA_DIR, MEMORY_DIR
+    
     ensure_initialized()
     
-    global DATA_DIR, MEMORY_DIR
+    path_str = str(path)
+    home_str = str(Path.home())
     
-    path = path.expanduser().resolve()
+    # 处理 ~ 展开
+    if path_str.startswith("~"):
+        path_str = path_str.replace("~", home_str, 1)
+    
+    # 检测并修复重复的家目录路径 (如 /Users/name/Users/name/...)
+    # 这种情况发生在用户输入 ~/Users/name/... 时
+    if home_str in path_str and path_str.count(home_str.split("/")[-1]) > 1:
+        # 用户可能错误地输入了 ~/Users/name/... 
+        # 尝试提取正确的相对路径
+        parts = path_str.split(home_str + "/")
+        if len(parts) > 1 and parts[1].startswith("Users/"):
+            # 找到第二个家目录出现的位置
+            second_home = path_str.find(home_str, len(home_str))
+            if second_home > 0:
+                path_str = path_str[second_home:]
+    
+    path = Path(path_str).resolve()
     path.mkdir(parents=True, exist_ok=True)
     
-    _config.set("data_dir", str(path))
+    old_data_dir = DATA_DIR
     
-    console.print(f"\n[green]✅ 数据目录已设置为: {path}[/green]\n")
+    # 如果启用了迁移且有旧数据
+    if migrate and old_data_dir.exists() and old_data_dir != path:
+        console.print(f"\n[yellow]🔄 正在迁移数据...[/yellow]")
+        console.print(f"   从: {old_data_dir}")
+        console.print(f"   到: {path}")
+        
+        import shutil
+        
+        # 需要迁移的目录
+        dirs_to_migrate = ["memory", "drafts", "pending_reviews", "vector_db"]
+        
+        migrated_count = 0
+        for dir_name in dirs_to_migrate:
+            old_dir = old_data_dir / dir_name
+            new_dir = path / dir_name
+            
+            if old_dir.exists():
+                if new_dir.exists():
+                    console.print(f"   ⚠️  {dir_name} 已存在，跳过")
+                else:
+                    shutil.copytree(old_dir, new_dir)
+                    migrated_count += 1
+                    console.print(f"   ✅  {dir_name}")
+        
+        # 迁移配置文件
+        old_config = old_data_dir / "memory" / "config.yaml"
+        new_config = path / "memory" / "config.yaml"
+        if old_config.exists() and not new_config.exists():
+            new_config.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(old_config, new_config)
+            console.print(f"   ✅  config.yaml")
+        
+        console.print(f"\n[green]✅ 数据迁移完成 ({migrated_count} 个目录)[/green]")
+    
+    # 更新配置（先重新初始化_config，因为原来的可能指向旧路径）
+    from huaqi_src.core.config_simple import ConfigManager
+    _new_config = ConfigManager(path)
+    _new_config.set("data_dir", str(path))
+    
+    DATA_DIR = path
+    MEMORY_DIR = path / "memory"
+    _config = _new_config
+    
+    # 设置新的数据目录到全局配置
+    from huaqi_src.core.config_paths import set_data_dir
+    set_data_dir(path)
+    
+    console.print(f"\n[green]✅ 数据目录已设置为: {path}[/green]")
+    console.print(f"\n[dim]提示: 旧数据仍保留在 {old_data_dir}[/dim]\n")
 
 
 @config_app.command("get")
@@ -1062,7 +1130,7 @@ def pipeline_run(
     ensure_initialized()
     
     import asyncio
-    from huaqi.pipeline import create_default_pipeline
+    from huaqi_src.pipeline import create_default_pipeline
     
     console.print("\n[bold cyan]🚀 启动内容流水线[/bold cyan]\n")
     
@@ -1071,7 +1139,7 @@ def pipeline_run(
         
         # 根据 source 参数筛选
         if source != "all":
-            from huaqi.pipeline.sources import XMockSource, RSSMockSource
+            from huaqi_src.pipeline.sources import XMockSource, RSSMockSource
             pipeline.sources = [
                 s for s in pipeline.sources 
                 if (source == "x" and isinstance(s, XMockSource)) or
@@ -1113,7 +1181,7 @@ def pipeline_drafts(
     """查看已生成的草稿"""
     ensure_initialized()
     
-    from huaqi.pipeline.platforms import XiaoHongShuPublisher
+    from huaqi_src.pipeline.platforms import XiaoHongShuPublisher
     
     publisher = XiaoHongShuPublisher()
     drafts = publisher.list_drafts()
@@ -1143,7 +1211,7 @@ def pipeline_review(
     """审核待发布内容"""
     ensure_initialized()
     
-    from huaqi.scheduler.pipeline_job import PipelineJobManager
+    from huaqi_src.scheduler.pipeline_job import PipelineJobManager
     
     manager = PipelineJobManager()
     
@@ -1225,7 +1293,7 @@ def daemon_command(
     """管理后台定时任务服务"""
     ensure_initialized()
     
-    from huaqi.scheduler import get_scheduler_manager, register_default_jobs, default_scheduler_config
+    from huaqi_src.scheduler import get_scheduler_manager, register_default_jobs, default_scheduler_config
     
     scheduler = get_scheduler_manager()
     
@@ -1319,7 +1387,7 @@ def personality_update(
     """分析日记并生成画像更新提案"""
     ensure_initialized()
     
-    from huaqi.core.personality_updater import PersonalityUpdater
+    from huaqi_src.core.personality_updater import PersonalityUpdater
     
     updater = PersonalityUpdater()
     proposal = updater.analyze_recent(days=days)
@@ -1346,7 +1414,7 @@ def personality_review(
     """查看或审核画像更新提案"""
     ensure_initialized()
     
-    from huaqi.core.personality_updater import PersonalityUpdater
+    from huaqi_src.core.personality_updater import PersonalityUpdater
     
     updater = PersonalityUpdater()
     
@@ -1408,7 +1476,7 @@ def personality_show():
     """显示当前人格画像"""
     ensure_initialized()
     
-    from huaqi.core.personality_simple import PersonalityEngine
+    from huaqi_src.core.personality_simple import PersonalityEngine
     
     engine = PersonalityEngine(DATA_DIR / "memory")
     profile = engine.profile
@@ -1482,7 +1550,7 @@ def system_hot_reload(
     """管理配置热重载"""
     ensure_initialized()
     
-    from huaqi.core.config_hot_reload import get_hot_reload, init_hot_reload
+    from huaqi_src.core.config_hot_reload import get_hot_reload, init_hot_reload
     
     if action == "start":
         hot_reload = get_hot_reload()

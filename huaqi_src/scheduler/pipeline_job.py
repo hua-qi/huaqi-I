@@ -64,7 +64,8 @@ class PipelineJobManager:
     
     def __init__(self, pending_dir: Path = None):
         if pending_dir is None:
-            pending_dir = Path.home() / ".huaqi" / "pending_reviews"
+            from ..core.config_paths import get_pending_reviews_dir
+            pending_dir = get_pending_reviews_dir()
         self.pending_dir = pending_dir
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         

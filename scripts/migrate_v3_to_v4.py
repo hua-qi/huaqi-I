@@ -85,8 +85,8 @@ def migrate_diary_to_vector(data_dir: Path) -> Tuple[int, int]:
         (成功数, 失败数)
     """
     try:
-        from huaqi.memory.vector.chroma_client import ChromaClient
-        from huaqi.memory.vector.embedder import TextEmbedder
+        from huaqi_src.memory.vector.chroma_client import ChromaClient
+        from huaqi_src.memory.vector.embedder import TextEmbedder
     except ImportError:
         print("⚠️ 向量存储模块未安装，跳过日记向量化")
         return 0, 0

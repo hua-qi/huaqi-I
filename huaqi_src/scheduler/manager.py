@@ -41,7 +41,8 @@ class SchedulerManager:
             timezone: 时区
         """
         if db_path is None:
-            db_path = Path.home() / ".huaqi" / "scheduler.db"
+            from .config_paths import get_scheduler_db_path
+            db_path = get_scheduler_db_path()
         
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

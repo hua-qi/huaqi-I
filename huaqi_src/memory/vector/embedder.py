@@ -35,7 +35,8 @@ class EmbeddingService:
         self.normalize_embeddings = normalize_embeddings
         
         if cache_dir is None:
-            cache_dir = Path.home() / ".huaqi" / "models"
+            from ...core.config_paths import get_models_cache_dir
+            cache_dir = get_models_cache_dir()
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
