@@ -37,11 +37,15 @@ class ChromaClient:
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(parents=True, exist_ok=True)
         
+        # 设置环境变量禁用 Chroma 自动下载 embedding 模型
+        os.environ.setdefault("CHROMA_DEFAULT_EMBEDDING_FUNCTION", "none")
+        
         # 创建客户端
         self.client = chromadb.PersistentClient(
             path=str(self.persist_directory),
             settings=Settings(
                 anonymized_telemetry=False,
+                allow_reset=True,
             )
         )
         
