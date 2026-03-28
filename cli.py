@@ -148,8 +148,8 @@ app = typer.Typer(
 )
 
 # 数据目录
-DATA_DIR: Path = Path("/Users/lianzimeng/workspace/huaqi")
-MEMORY_DIR: Path = Path("/Users/lianzimeng/workspace/huaqi/memory")
+DATA_DIR: Optional[Path] = None
+MEMORY_DIR: Optional[Path] = None
 
 # 核心组件缓存
 _config: Optional[ConfigManager] = None
@@ -164,6 +164,13 @@ _git: Optional[GitAutoCommit] = None
 def ensure_initialized():
     """确保核心组件已初始化"""
     global _config, _personality, _hooks, _growth, _diary, _memory_store, _git
+    global DATA_DIR, MEMORY_DIR
+    
+    from huaqi_src.core.config_paths import require_data_dir, get_memory_dir
+    
+    # 确保数据目录已配置
+    DATA_DIR = require_data_dir()
+    MEMORY_DIR = get_memory_dir()
     
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
     
@@ -205,7 +212,18 @@ def _build_system_prompt(include_diary: bool = True) -> str:
 ## 用户最近日记
 {recent_diary}"""
     
-    return f"""你是 {p.name}，用户的个人 AI {p.role}。
+    # 获取用户画像信息
+    user_profile_context = ""
+    try:
+        from huaqi_src.core.user_profile import get_profile_manager
+        profile_manager = get_profile_manager()
+        profile_summary = profile_manager.get_system_prompt_addition()
+        if profile_summary:
+            user_profile_context = f"\n{profile_summary}"
+    except Exception:
+        pass
+    
+    return f"""你是 {p.name}，用户的个人 AI {p.role}。{user_profile_context}
 
 ## 你的性格
 - 沟通风格: {p.tone}
@@ -844,6 +862,35 @@ def chat_mode():
                     console.print("[yellow]未知命令。输入 /help 查看帮助[/yellow]\n")
                     continue
             
+            # 尝试从用户输入中提取用户信息（使用 LLM 智能提取）
+            try:
+                from huaqi_src.core.user_profile import get_profile_manager
+                profile_manager = get_profile_manager()
+                
+                # 获取 LLM 管理器用于提取
+                _llm_for_extraction = LLMManager()
+                config = _config.load_config()
+                provider_name = config.llm_default_provider
+                
+                if provider_name in config.llm_providers:
+                    provider_config = config.llm_providers[provider_name]
+                    llm_config = LLMConfig(
+                        provider=provider_config.name,
+                        model=provider_config.model,
+                        api_key=provider_config.api_key,
+                        api_base=provider_config.api_base,
+                        temperature=0.3,  # 低温度，更确定性的提取
+                        max_tokens=500,
+                    )
+                    _llm_for_extraction.add_config(llm_config)
+                    _llm_for_extraction.set_active(provider_config.name)
+                    
+                    extracted = profile_manager.extract_from_message(user_input, _llm_for_extraction)
+                    if extracted:
+                        console.print(f"[dim green]💡 我记住了: {', '.join(extracted.keys())}[/dim green]\n")
+            except Exception:
+                pass
+            
             # 生成流式回复 - 使用 rich Live 实现真正的流式渲染
             from datetime import datetime
             from rich.live import Live
@@ -1073,6 +1120,127 @@ def config_set(
     console.print(f"[green]✅ 已设置 {key} = {value}[/green]")
 
 
+# ============ 用户画像管理 ============
+
+profile_app = typer.Typer(name="profile", help="用户画像管理")
+app.add_typer(profile_app)
+
+
+@profile_app.command("show")
+def profile_show():
+    """显示用户画像"""
+    ensure_initialized()
+    
+    from huaqi_src.core.user_profile import get_profile_manager
+    
+    profile_manager = get_profile_manager()
+    profile = profile_manager.profile
+    
+    console.print("\n[bold magenta]👤 用户画像[/bold magenta]\n")
+    
+    # 身份信息
+    identity_table = Table(box=box.ROUNDED, title="身份信息")
+    identity_table.add_column("项目", style="cyan")
+    identity_table.add_column("值")
+    
+    identity = profile.identity
+    identity_table.add_row("名字", identity.name or "未设置")
+    identity_table.add_row("昵称", identity.nickname or "未设置")
+    identity_table.add_row("职业", identity.occupation or "未设置")
+    identity_table.add_row("公司", identity.company or "未设置")
+    identity_table.add_row("所在地", identity.location or "未设置")
+    identity_table.add_row("生日", identity.birth_date or "未设置")
+    
+    console.print(identity_table)
+    console.print()
+    
+    # 背景信息
+    background_table = Table(box=box.ROUNDED, title="背景信息")
+    background_table.add_column("项目", style="cyan")
+    background_table.add_column("内容")
+    
+    background = profile.background
+    background_table.add_row("教育", background.education or "未设置")
+    background_table.add_row("技能", ", ".join(background.skills) if background.skills else "未设置")
+    background_table.add_row("爱好", ", ".join(background.hobbies) if background.hobbies else "未设置")
+    background_table.add_row("目标", ", ".join(background.life_goals) if background.life_goals else "未设置")
+    
+    console.print(background_table)
+    console.print()
+    
+    # 元数据
+    console.print(f"[dim]最后更新: {profile.updated_at}[/dim]")
+    console.print(f"[dim]版本: {profile.version}[/dim]\n")
+
+
+@profile_app.command("set")
+def profile_set(
+    field: str = typer.Argument(..., help="字段名 (name/nickname/occupation/location/...)"),
+    value: str = typer.Argument(..., help="字段值"),
+):
+    """设置用户画像字段"""
+    ensure_initialized()
+    
+    from huaqi_src.core.user_profile import get_profile_manager
+    
+    profile_manager = get_profile_manager()
+    
+    # 身份字段
+    identity_fields = ["name", "nickname", "birth_date", "location", "occupation", "company"]
+    if field in identity_fields:
+        profile_manager.update_identity(**{field: value})
+        console.print(f"[green]✅ 已更新 {field} = {value}[/green]")
+        return
+    
+    # 背景字段（列表类型）
+    background_list_fields = ["skills", "hobbies", "life_goals", "values"]
+    if field in background_list_fields:
+        # 解析逗号分隔的值
+        items = [v.strip() for v in value.split(",")]
+        current = getattr(profile_manager.profile.background, field, [])
+        for item in items:
+            if item not in current:
+                current.append(item)
+        setattr(profile_manager.profile.background, field, current)
+        profile_manager.save()
+        console.print(f"[green]✅ 已添加 {field}: {', '.join(items)}[/green]")
+        return
+    
+    console.print(f"[yellow]❌ 未知字段: {field}[/yellow]")
+    console.print(f"[dim]可用字段: {', '.join(identity_fields + background_list_fields)}[/dim]")
+
+
+@profile_app.command("forget")
+def profile_forget(
+    field: str = typer.Argument(..., help="要删除的字段名"),
+):
+    """删除用户画像字段"""
+    ensure_initialized()
+    
+    from huaqi_src.core.user_profile import get_profile_manager
+    
+    profile_manager = get_profile_manager()
+    profile = profile_manager.profile
+    
+    # 身份字段
+    identity_fields = ["name", "nickname", "birth_date", "location", "occupation", "company"]
+    if field in identity_fields:
+        setattr(profile.identity, field, None)
+        profile_manager.save()
+        console.print(f"[green]✅ 已删除 {field}[/green]")
+        return
+    
+    # 背景字段
+    background_list_fields = ["skills", "hobbies", "life_goals", "values"]
+    if field in background_list_fields:
+        setattr(profile.background, field, [])
+        profile_manager.save()
+        console.print(f"[green]✅ 已清空 {field}[/green]")
+        return
+    
+    console.print(f"[yellow]❌ 未知字段: {field}[/yellow]")
+
+
 # ============ 主命令 ============
 
 @app.command("chat")
@@ -1099,15 +1267,32 @@ def show_status():
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    data_dir: Optional[Path] = typer.Option(None, "--data-dir", "-d", help="数据目录"),
+    data_dir: Optional[Path] = typer.Option(None, "--data-dir", "-d", help="数据目录路径"),
 ):
     """Huaqi - 个人 AI 同伴系统"""
-    global DATA_DIR, MEMORY_DIR, _config, _personality, _hooks, _growth, _git
+    from huaqi_src.core.config_paths import set_data_dir, get_data_dir, is_data_dir_set
     
+    # 如果命令行指定了数据目录，使用它
     if data_dir is not None:
-        DATA_DIR = data_dir.expanduser().resolve()
-        MEMORY_DIR = Path("/Users/lianzimeng/workspace/huaqi/memory")
-        _config = _personality = _hooks = _growth = _git = None
+        set_data_dir(data_dir)
+    
+    # 检查数据目录是否已配置（命令行参数、环境变量、或配置文件）
+    if not is_data_dir_set():
+        console.print("\n[bold red]❌ 错误: 未指定数据目录[/bold red]\n")
+        console.print("请使用以下方式之一指定数据存储目录:\n")
+        console.print("  [cyan]1. 命令行参数:[/cyan]")
+        console.print("     huaqi --data-dir /path/to/data\n")
+        console.print("  [cyan]2. 环境变量:[/cyan]")
+        console.print("     export HUAQI_DATA_DIR=/path/to/data")
+        console.print("     huaqi\n")
+        console.print("  [cyan]3. 简写形式:[/cyan]")
+        console.print("     huaqi -d /path/to/data\n")
+        raise typer.Exit(1)
+    
+    # 更新全局数据目录
+    global DATA_DIR, MEMORY_DIR, _config, _personality, _hooks, _growth, _git
+    DATA_DIR = get_data_dir()
+    MEMORY_DIR = DATA_DIR / "memory"
     
     # 如果没有子命令，进入对话模式
     if ctx.invoked_subcommand is None:

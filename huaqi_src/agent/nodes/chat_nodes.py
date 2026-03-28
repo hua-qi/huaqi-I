@@ -1,14 +1,22 @@
 """Chat Workflow 节点实现
 
 对话相关节点：意图识别、上下文构建、记忆检索、生成回复
+使用自适应用户理解系统，支持动态维度
 """
 
 import re
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ..state import AgentState, INTENT_CHAT, INTENT_DIARY, INTENT_SKILL, INTENT_CONTENT, INTENT_UNKNOWN
+from ...core.adaptive_understanding import get_adaptive_understanding
+from ...core.llm import get_llm_manager
+from ...core.user_profile import get_profile_manager
+
+# 缓存上次的分析结果
+_user_last_result: Optional[Any] = None
 
 
 # 简单的意图分类规则
@@ -59,23 +67,50 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
 
 def build_context(state: AgentState) -> Dict[str, Any]:
     """构建上下文节点
-    
-    组装系统提示词、人格画像、记忆等
+
+    组装系统提示词、人格画像、记忆、用户理解洞察等
     """
     # 获取人格画像上下文
     personality_context = state.get("personality_context", "")
+
+    # 获取用户画像上下文
+    user_profile_context = ""
+    try:
+        profile_manager = get_profile_manager()
+        user_profile_context = profile_manager.get_system_prompt_addition()
+    except Exception:
+        pass
+
+    # 获取自适应理解上下文
+    user_insight_context = ""
     
+    try:
+        adaptive = get_adaptive_understanding()
+        user_insight_context = adaptive.get_context_for_response(
+            current_result=_user_last_result,
+        )
+    except Exception:
+        pass
+
     # 构建系统提示词
-    system_prompt = build_system_prompt(personality_context)
-    
+    system_prompt = build_system_prompt(
+        personality_context,
+        user_profile_context,
+        user_insight_context,
+    )
+
     # 更新 workflow_data
     workflow_data = state.get("workflow_data", {})
     workflow_data["system_prompt"] = system_prompt
-    
+
     return {"workflow_data": workflow_data}
 
 
-def build_system_prompt(personality_context: Optional[str] = None) -> str:
+def build_system_prompt(
+    personality_context: Optional[str] = None,
+    user_profile_context: Optional[str] = None,
+    user_insight_context: Optional[str] = None,
+) -> str:
     """构建系统提示词"""
     base_prompt = """你是 Huaqi (花旗)，一个个人 AI 伴侣系统。
 
@@ -90,12 +125,97 @@ def build_system_prompt(personality_context: Optional[str] = None) -> str:
 - 简洁明了，避免冗长
 - 适当使用 emoji 增加亲和力
 - 记住用户的上下文，保持对话连贯
+- 根据用户的情绪状态调整回应方式
+- 关注用户的深层需求，不只是表面问题
 """
-    
+
     if personality_context:
-        base_prompt += f"\n\n用户画像：\n{personality_context}\n"
-    
+        base_prompt += f"\n\n{personality_context}\n"
+
+    # 添加用户画像信息
+    if user_profile_context:
+        base_prompt += f"\n{user_profile_context}\n"
+
+    # 添加用户理解洞察
+    if user_insight_context:
+        base_prompt += f"\n{user_insight_context}\n"
+
     return base_prompt
+
+
+def extract_user_info(state: AgentState) -> Dict[str, Any]:
+    """从用户消息中提取用户信息节点
+    
+    检测用户自我介绍并更新画像
+    """
+    messages = state.get("messages", [])
+
+    # 获取最后一条用户消息
+    last_message = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_message = msg.content
+            break
+
+    if not last_message:
+        return {}
+
+    try:
+        profile_manager = get_profile_manager()
+        extracted = profile_manager.extract_from_message(last_message)
+
+        if extracted:
+            return {"user_info_extracted": extracted}
+
+    except Exception:
+        pass
+
+    return {}
+
+
+def analyze_user_understanding(state: AgentState) -> Dict[str, Any]:
+    """分析用户理解节点
+    
+    使用自适应用户理解系统分析消息，支持动态维度发现
+    """
+    messages = state.get("messages", [])
+    conversation_id = state.get("conversation_id", "")
+
+    # 获取最后一条用户消息
+    last_message = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_message = msg.content
+            break
+
+    if not last_message:
+        return {"user_insight": None}
+
+    try:
+        # 获取自适应理解系统
+        adaptive = get_adaptive_understanding()
+
+        # 分析消息
+        result = asyncio.run(adaptive.analyze(
+            message=last_message,
+            conversation_id=conversation_id,
+            context={
+                "history_turns": len(messages),
+            }
+        ))
+
+        # 更新缓存
+        global _user_last_result
+        _user_last_result = result
+
+        return {
+            "user_insight": result.to_dict(),
+            "proposed_dimensions": result.proposed_dimensions,
+        }
+
+    except Exception as e:
+        # 分析失败不影响主流程
+        return {"user_insight": None, "insight_error": str(e)}
 
 
 def retrieve_memories(state: AgentState) -> Dict[str, Any]:
@@ -208,3 +328,7 @@ def handle_error(state: AgentState) -> Dict[str, Any]:
             "error": None,
             "retry_count": 0,
         }
+
+
+# 兼容旧接口
+analyze_user_message = analyze_user_understanding
