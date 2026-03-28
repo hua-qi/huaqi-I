@@ -56,7 +56,7 @@ huaqi config set-data-dir <path>  # 设置数据目录
 huaqi config migrate          # 数据迁移
 ```
 
-详见 [CLI_GUIDE.md](CLI_GUIDE.md)
+详见 [docs/guides/cli-guide.md](docs/guides/cli-guide.md)
 
 ## 系统架构
 
@@ -78,7 +78,7 @@ huaqi config migrate          # 数据迁移
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-详见 [ARCHITECTURE.md](ARCHITECTURE.md) 和 [docs/TECH_SPEC.md](docs/TECH_SPEC.md)
+详见 [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) 和 [docs/design/TECH_SPEC.md](docs/design/TECH_SPEC.md)
 
 ## 项目结构
 
@@ -92,9 +92,11 @@ huaqi-growing/
 │   └── scheduler/       # 定时任务
 ├── cli.py               # CLI 入口
 ├── docs/                # 详细文档
-│   ├── PRD.md           # 产品需求文档
-│   ├── TECH_SPEC.md     # 技术规范
-│   └── TEST_PLAN.md     # 测试计划
+│   ├── DOC_GUIDELINES.md  # 文档规范
+│   ├── design/          # 产品与技术设计
+│   ├── features/        # 功能模块文档
+│   ├── guides/          # 用户与开发者指南
+│   └── ops/             # 运维与工程
 └── tests/               # 测试
 ```
 
@@ -127,20 +129,22 @@ huaqi-growing/
 | P7 | 数据隔离与用户管理 | ✅ |
 | P8 | 配置热重载与数据迁移 | ✅ |
 
-详见 [ROADMAP.md](ROADMAP.md)
+详见 [spec/roadmap/ROADMAP.md](spec/roadmap/ROADMAP.md)
 
 ## 文档索引
 
 | 文档 | 说明 |
 |------|------|
 | [QUICK_START.md](QUICK_START.md) | 5分钟快速上手 |
-| [CLI_GUIDE.md](CLI_GUIDE.md) | 完整命令参考 |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 系统架构概述 |
-| [ROADMAP.md](ROADMAP.md) | 开发路线图 |
-| [docs/PRD.md](docs/PRD.md) | 产品需求文档 |
-| [docs/TECH_SPEC.md](docs/TECH_SPEC.md) | 详细技术规范 |
-| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | 测试计划 |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | 实施计划 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
+| [docs/guides/cli-guide.md](docs/guides/cli-guide.md) | 完整命令参考 |
+| [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) | 系统架构 |
+| [docs/design/TECH_SPEC.md](docs/design/TECH_SPEC.md) | 详细技术规范 |
+| [docs/design/PRD.md](docs/design/PRD.md) | 产品需求文档 |
+| [docs/ops/test-plan.md](docs/ops/test-plan.md) | 测试计划 |
+| [docs/ops/implementation-plan.md](docs/ops/implementation-plan.md) | 实施计划 |
+| [spec/roadmap/ROADMAP.md](spec/roadmap/ROADMAP.md) | 开发路线图 |
+| [docs/DOC_GUIDELINES.md](docs/DOC_GUIDELINES.md) | 文档编写规范 |
 
 ## License
 

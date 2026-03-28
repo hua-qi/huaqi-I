@@ -1501,51 +1501,148 @@ profile_app = typer.Typer(name="profile", help="用户画像管理")
 app.add_typer(profile_app)
 
 
+@profile_app.callback(invoke_without_command=True)
+def profile_callback(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+
+
+def _build_llm_manager_for_analysis():
+    """构建用于分析的 LLM 管理器"""
+    from huaqi_src.core.llm import LLMManager, LLMConfig
+    llm = LLMManager()
+    config = _config.load_config()
+    provider_name = config.llm_default_provider
+    if provider_name not in config.llm_providers:
+        return None
+    provider_config = config.llm_providers[provider_name]
+    api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    llm_config = LLMConfig(
+        provider=provider_config.name,
+        model=provider_config.model,
+        api_key=api_key,
+        api_base=provider_config.api_base,
+        temperature=0.7,
+        max_tokens=1500,
+        timeout=60,
+    )
+    llm.add_config(llm_config)
+    llm.set_active(provider_config.name)
+    return llm
+
+
 @profile_app.command("show")
 def profile_show():
-    """显示用户画像"""
+    """显示用户画像（优先展示 LLM 叙事描述）"""
     ensure_initialized()
-    
-    from huaqi_src.core.user_profile import get_profile_manager
-    
+
+    from huaqi_src.core.user_profile import get_profile_manager, get_narrative_manager
+
+    console.print("\n[bold magenta]👤 用户画像[/bold magenta]\n")
+
+    narrative_manager = get_narrative_manager()
+    cached = narrative_manager.get_cached()
+
+    if cached is not None:
+        if cached.is_today():
+            from rich.panel import Panel
+            from rich.text import Text
+            console.print(Panel(
+                cached.content,
+                title="[bold cyan]AI 洞察[/bold cyan]",
+                border_style="cyan",
+                padding=(1, 2),
+            ))
+            sources_str = "、".join(cached.data_sources) if cached.data_sources else "无"
+            console.print(f"[dim]数据来源: {sources_str}  |  生成时间: {cached.generated_at[:10]}[/dim]\n")
+        else:
+            console.print("[dim]（画像描述生成于昨天或更早，运行 `huaqi profile refresh` 可刷新）[/dim]\n")
+            from rich.panel import Panel
+            console.print(Panel(
+                cached.content,
+                title="[bold cyan]AI 洞察（旧）[/bold cyan]",
+                border_style="dim",
+                padding=(1, 2),
+            ))
+    else:
+        console.print("[dim]尚未生成 AI 画像描述。运行 `huaqi profile refresh` 立即生成。[/dim]\n")
+
     profile_manager = get_profile_manager()
     profile = profile_manager.profile
-    
-    console.print("\n[bold magenta]👤 用户画像[/bold magenta]\n")
-    
-    # 身份信息
-    identity_table = Table(box=box.ROUNDED, title="身份信息")
-    identity_table.add_column("项目", style="cyan")
-    identity_table.add_column("值")
-    
+
     identity = profile.identity
-    identity_table.add_row("名字", identity.name or "未设置")
-    identity_table.add_row("昵称", identity.nickname or "未设置")
-    identity_table.add_row("职业", identity.occupation or "未设置")
-    identity_table.add_row("公司", identity.company or "未设置")
-    identity_table.add_row("所在地", identity.location or "未设置")
-    identity_table.add_row("生日", identity.birth_date or "未设置")
-    
-    console.print(identity_table)
-    console.print()
-    
-    # 背景信息
-    background_table = Table(box=box.ROUNDED, title="背景信息")
-    background_table.add_column("项目", style="cyan")
-    background_table.add_column("内容")
-    
     background = profile.background
-    background_table.add_row("教育", background.education or "未设置")
-    background_table.add_row("技能", ", ".join(background.skills) if background.skills else "未设置")
-    background_table.add_row("爱好", ", ".join(background.hobbies) if background.hobbies else "未设置")
-    background_table.add_row("目标", ", ".join(background.life_goals) if background.life_goals else "未设置")
-    
-    console.print(background_table)
-    console.print()
-    
-    # 元数据
-    console.print(f"[dim]最后更新: {profile.updated_at}[/dim]")
-    console.print(f"[dim]版本: {profile.version}[/dim]\n")
+
+    has_identity = any([identity.name, identity.nickname, identity.occupation, identity.company, identity.location, identity.birth_date])
+    has_background = any([background.education, background.skills, background.hobbies, background.life_goals])
+
+    if has_identity or has_background:
+        console.print("[bold]── 结构化字段 ──[/bold]")
+        if has_identity:
+            identity_table = Table(box=box.SIMPLE, show_header=False)
+            identity_table.add_column("项目", style="dim", width=8)
+            identity_table.add_column("值")
+            if identity.name:
+                identity_table.add_row("名字", identity.name)
+            if identity.nickname:
+                identity_table.add_row("昵称", identity.nickname)
+            if identity.occupation:
+                identity_table.add_row("职业", identity.occupation)
+            if identity.company:
+                identity_table.add_row("公司", identity.company)
+            if identity.location:
+                identity_table.add_row("所在地", identity.location)
+            if identity.birth_date:
+                identity_table.add_row("生日", identity.birth_date)
+            console.print(identity_table)
+
+        if has_background:
+            bg_table = Table(box=box.SIMPLE, show_header=False)
+            bg_table.add_column("项目", style="dim", width=8)
+            bg_table.add_column("内容")
+            if background.education:
+                bg_table.add_row("教育", background.education)
+            if background.skills:
+                bg_table.add_row("技能", ", ".join(background.skills))
+            if background.hobbies:
+                bg_table.add_row("爱好", ", ".join(background.hobbies))
+            if background.life_goals:
+                bg_table.add_row("目标", ", ".join(background.life_goals))
+            console.print(bg_table)
+
+    console.print(f"\n[dim]结构化版本: {profile.version}  |  更新: {profile.updated_at[:10]}[/dim]\n")
+
+
+@profile_app.command("refresh")
+def profile_refresh():
+    """立即重新生成 AI 叙事画像（调用 LLM，忽略今日缓存）"""
+    ensure_initialized()
+
+    from huaqi_src.core.user_profile import get_narrative_manager
+
+    console.print("[dim]正在生成 AI 画像，请稍候...[/dim]")
+
+    llm = _build_llm_manager_for_analysis()
+    if llm is None:
+        console.print("[red]❌ LLM 未配置，请先运行: huaqi config set-llm[/red]")
+        raise typer.Exit(1)
+
+    narrative_manager = get_narrative_manager()
+    try:
+        narrative = narrative_manager.generate(llm)
+        from rich.panel import Panel
+        console.print()
+        console.print(Panel(
+            narrative.content,
+            title="[bold cyan]AI 洞察[/bold cyan]",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
+        sources_str = "、".join(narrative.data_sources) if narrative.data_sources else "无"
+        console.print(f"[dim]数据来源: {sources_str}[/dim]\n")
+        console.print("[green]✅ 画像已更新并缓存[/green]")
+    except Exception as e:
+        console.print(f"[red]❌ 生成失败: {e}[/red]")
 
 
 @profile_app.command("set")
@@ -1681,6 +1778,12 @@ def main(
 
 pipeline_app = typer.Typer(name="pipeline", help="内容流水线 - X/RSS 采集 → 小红书发布")
 app.add_typer(pipeline_app)
+
+
+@pipeline_app.callback(invoke_without_command=True)
+def pipeline_callback(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
 
 
 @pipeline_app.command("run")
@@ -1943,6 +2046,12 @@ personality_app = typer.Typer(name="personality", help="人格画像管理")
 app.add_typer(personality_app)
 
 
+@personality_app.callback(invoke_without_command=True)
+def personality_callback(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+
+
 @personality_app.command("update")
 def personality_update(
     days: int = typer.Option(7, "--days", "-d", help="分析最近几天的日记"),
@@ -2072,6 +2181,12 @@ def personality_show():
 
 system_app = typer.Typer(name="system", help="系统管理")
 app.add_typer(system_app)
+
+
+@system_app.callback(invoke_without_command=True)
+def system_callback(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
 
 
 @system_app.command("migrate")
