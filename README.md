@@ -35,25 +35,22 @@ huaqi config set-llm
 
 ```bash
 # 对话
-huaqi chat                    # 开始对话
+huaqi chat                        # 开始对话（LangGraph Agent）
 
-# 日记
-huaqi diary                   # 写日记
-huaqi diary list              # 查看日记
-huaqi diary import <path>     # 导入 Markdown 日记
-
-# 技能与目标
-huaqi skill add "Python"      # 添加技能
-huaqi skill log Python 2.5    # 记录练习时间
-huaqi goal add "学习 LangGraph"  # 添加目标
-
-# 内容流水线
-huaqi pipeline add-source     # 添加内容源
-huaqi pipeline fetch          # 手动抓取内容
+# 用户画像
+huaqi profile show                # 查看画像
+huaqi profile set name 子蒙       # 设置字段
 
 # 配置
-huaqi config set-data-dir <path>  # 设置数据目录
-huaqi config migrate          # 数据迁移
+huaqi config set-llm openai --api-key <key>   # 配置 LLM
+huaqi config set-data-dir <path>              # 设置数据目录
+
+# 流水线
+huaqi pipeline run --dry-run      # 预览内容流水线
+huaqi pipeline run                # 执行流水线
+
+# 后台任务
+huaqi daemon start                # 启动定时任务
 ```
 
 详见 [docs/guides/cli-guide.md](docs/guides/cli-guide.md)
@@ -84,20 +81,22 @@ huaqi config migrate          # 数据迁移
 
 ```
 huaqi-growing/
-├── huaqi_src/           # 源码
-│   ├── agent/           # LangGraph Agent 工作流
-│   ├── core/            # 核心模块（配置、个性、LLM）
-│   ├── memory/          # 记忆系统
-│   ├── pipeline/        # 内容流水线
-│   └── scheduler/       # 定时任务
-├── cli.py               # CLI 入口
-├── docs/                # 详细文档
-│   ├── DOC_GUIDELINES.md  # 文档规范
-│   ├── design/          # 产品与技术设计
-│   ├── features/        # 功能模块文档
-│   ├── guides/          # 用户与开发者指南
-│   └── ops/             # 运维与工程
-└── tests/               # 测试
+├── cli.py                  # CLI 入口（薄包装）
+├── huaqi_src/              # 源码包
+│   ├── agent/              # LangGraph Agent 工作流
+│   ├── cli/                # CLI 层（命令 + UI + 对话逻辑）
+│   │   └── commands/       # 各子命令模块
+│   ├── core/               # 核心业务逻辑
+│   ├── memory/             # 记忆存储与检索
+│   ├── pipeline/           # 内容流水线
+│   └── scheduler/          # 定时任务
+├── docs/                   # 文档
+│   ├── DOC_GUIDELINES.md   # 文档编写规范
+│   ├── design/             # 产品与技术设计
+│   ├── features/           # 功能模块文档
+│   ├── guides/             # 用户与开发者指南
+│   └── ops/                # 运维与工程
+└── tests/                  # 测试
 ```
 
 ## 数据存储
@@ -138,11 +137,11 @@ huaqi-growing/
 | [QUICK_START.md](QUICK_START.md) | 5分钟快速上手 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 | [docs/guides/cli-guide.md](docs/guides/cli-guide.md) | 完整命令参考 |
+| [docs/guides/code-organization.md](docs/guides/code-organization.md) | 代码及文件组织规范 |
 | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) | 系统架构 |
 | [docs/design/TECH_SPEC.md](docs/design/TECH_SPEC.md) | 详细技术规范 |
 | [docs/design/PRD.md](docs/design/PRD.md) | 产品需求文档 |
 | [docs/ops/test-plan.md](docs/ops/test-plan.md) | 测试计划 |
-| [docs/ops/implementation-plan.md](docs/ops/implementation-plan.md) | 实施计划 |
 | [spec/roadmap/ROADMAP.md](spec/roadmap/ROADMAP.md) | 开发路线图 |
 | [docs/DOC_GUIDELINES.md](docs/DOC_GUIDELINES.md) | 文档编写规范 |
 
@@ -152,5 +151,5 @@ MIT License
 
 ---
 
-*文档版本: v0.2.0*  
-*最后更新: 2026-03-27*
+*文档版本: v0.3.0*
+*最后更新: 2026-03-29*

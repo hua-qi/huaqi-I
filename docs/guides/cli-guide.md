@@ -1,223 +1,215 @@
-# Huaqi-I CLI 使用指南
+# CLI 命令参考
 
-> `huaqi-I` 是 Huaqi Phase 3 的交互式 CLI 工具
+> 当前版本命令参考。所有命令均以 `huaqi` 开头，需先通过 `--data-dir` 或环境变量指定数据目录。
 
-## 快速开始
+## 前置：配置数据目录
 
-```bash
-# 进入项目目录
-cd /Users/lianzimeng/workspace/huaqi
-
-# 安装依赖
-pip install -e .
-
-# 查看帮助
-huaqi-I --help
-```
-
-## Phase 3 CLI 命令
-
-### 🎭 个性引擎 (personality)
+每次调用必须指定数据目录（或已保存过一次）：
 
 ```bash
-# 查看当前个性配置
-huaqi-I personality show
+# 方式一：命令行参数（首次推荐）
+huaqi --data-dir ~/my-huaqi <command>
 
-# 应用预设 (companion/mentor/friend/assistant)
-huaqi-I personality preset companion
-huaqi-I personality preset mentor
-
-# 设置个性参数
-huaqi-I personality set tone warm
-huaqi-I personality set empathy 0.9
-huaqi-I personality set humor 0.5
-
-# 查看所有预设
-huaqi-I personality presets
-
-# 查看生成的系统提示词
-huaqi-I personality prompt
-
-# 交互式配置向导
-huaqi-I personality wizard
+# 方式二：环境变量
+export HUAQI_DATA_DIR=~/my-huaqi
+huaqi <command>
 ```
 
-### ⚡ Hook 系统 (hooks)
+---
+
+## 对话
 
 ```bash
-# 列出所有 Hooks
-huaqi-I hooks list
-huaqi-I hooks list --enabled
-
-# 查看 Hook 详情
-huaqi-I hooks show morning-greeting
-
-# 启用/禁用 Hook
-huaqi-I hooks enable morning-greeting
-huaqi-I hooks disable daily-summary
-
-# 手动触发 Hook
-huaqi-I hooks trigger morning-greeting
-
-# 创建新 Hook
-huaqi-I hooks create --name "我的提醒" --trigger schedule
-
-# 删除 Hook
-huaqi-I hooks delete my-hook-id
-
-# 测试事件触发
-huaqi-I hooks test memory_created
-
-# 启动调度器
-huaqi-I hooks scheduler start --interval 60
+huaqi chat                       # 启动 LangGraph Agent 对话（默认）
+huaqi chat --legacy               # 使用传统对话模式
+huaqi status                      # 查看系统状态（技能、目标、人格）
 ```
 
-### 📈 成长系统 (growth)
+### 对话中的斜杠命令
+
+进入 `huaqi chat` 后，可在输入框中使用以下命令：
+
+| 命令 | 说明 |
+|------|------|
+| `/help` | 显示帮助 |
+| `/status` | 查看详细状态 |
+| `/clear` | 清屏 |
+| `/skill <名称>` | 添加技能 |
+| `/log <技能> <小时>` | 记录练习时间 |
+| `/goal <标题>` | 设定目标 |
+| `/diary` | 写今日日记 |
+| `/diary list` | 查看日记列表 |
+| `/diary search <词>` | 搜索日记 |
+| `/diary import <路径>` | 从文件/目录导入日记 |
+| `/skills` | 查看技能列表 |
+| `/goals` | 查看目标列表 |
+| `/report` | 查看本周报告 |
+| `/report insights` | 查看模式洞察 |
+| `/care` | 手动触发关怀检查 |
+| `/care status` | 查看关怀统计 |
+| `/history` | 最近对话记录 |
+| `/history list` | 对话列表 |
+| `/history search <词>` | 搜索历史对话 |
+| `exit` / `quit` | 退出对话 |
+
+### 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `↑` / `↓` | 历史记录 |
+| `Tab` | 自动补全（命令 + 历史词组） |
+| `Ctrl+R` | 搜索历史 |
+| `Ctrl+L` | 清屏 |
+| `Ctrl+O` 或 `Esc+Enter` | 插入换行（多行输入） |
+| `Enter` | 提交 |
+| `Ctrl+C` | 取消当前输入 |
+
+---
+
+## 配置管理 `config`
 
 ```bash
-# 查看成长概览
-huaqi-I growth status
+huaqi config show                              # 查看当前配置
+huaqi config get <key>                         # 获取配置项
+huaqi config set <key> <value>                 # 设置配置项
 
-# ===== 技能管理 =====
-# 列出所有技能
-huaqi-I growth skills
-huaqi-I growth skills --category coding
+# 配置 LLM
+huaqi config set-llm openai \
+  --api-key sk-xxx \
+  --api-base https://api.openai.com/v1 \
+  --model gpt-4o
 
-# 添加技能
-huaqi-I growth skill-add Python --category coding --current 入门 --target 熟练
+# 配置其他提供商
+huaqi config set-llm deepseek --api-key sk-xxx
+huaqi config set-llm claude --api-key sk-xxx
 
-# 记录练习
-huaqi-I growth skill-log Python --hours 2.5 --notes "完成了 CLI 开发"
-
-# 查看技能详情
-huaqi-I growth skill-show Python
-
-# ===== 目标管理 =====
-# 列出目标
-huaqi-I growth goals
-huaqi-I growth goals --status active
-
-# 添加目标
-huaqi-I growth goal-add "掌握 Python" --category short_term
-
-# 更新进度
-huaqi-I growth goal-progress goal_xxx 75
-
-# 完成目标
-huaqi-I growth goal-complete goal_xxx
-
-# ===== 报告 =====
-# 生成周报
-huaqi-I growth report weekly
-
-# 生成洞察 (需要 LLM)
-huaqi-I growth insights
+# 修改数据目录（支持数据迁移）
+huaqi config set-data-dir ~/new-huaqi
+huaqi config set-data-dir ~/new-huaqi --no-migrate  # 不迁移数据
 ```
 
-### 💬 对话 (chat)
+---
+
+## 用户画像 `profile`
 
 ```bash
-# 开始对话 (使用 Phase 3 特性)
-huaqi-I chat
+huaqi profile show                             # 查看画像（AI 叙事 + 结构化字段）
+huaqi profile refresh                          # 立即重新生成 AI 叙事画像（调用 LLM）
 
-# 快速问答
-huaqi-I chat --quick "讲个笑话"
+# 设置结构化字段
+huaqi profile set name 子蒙
+huaqi profile set occupation 工程师
+huaqi profile set location 北京
+huaqi profile set skills "Python,LangChain"
+huaqi profile set hobbies "阅读,写作"
 
-# 使用旧版本（不使用 Phase 3）
-huaqi-I chat --legacy
-
-# 在对话中可用命令:
-#   exit/quit - 退出
-#   clear     - 清除上下文
-#   status    - 查看状态（包括 Phase 3 信息）
-#   /personality - 查看当前个性
-#   /growth   - 查看成长摘要
+# 删除字段
+huaqi profile forget name
+huaqi profile forget skills                    # 清空技能列表
 ```
+
+**可用字段：**
+
+| 类型 | 字段名 |
+|------|--------|
+| 身份 | `name` `nickname` `birth_date` `location` `occupation` `company` |
+| 背景（列表） | `skills` `hobbies` `life_goals` `values` |
+
+---
+
+## 人格画像 `personality`
+
+```bash
+huaqi personality show                         # 查看当前 AI 人格配置
+huaqi personality update                       # 分析近 7 天日记，生成更新提案
+huaqi personality update --days 14             # 分析近 14 天
+
+huaqi personality review                       # 列出待审核提案
+huaqi personality review <id>                  # 查看提案详情
+huaqi personality review <id> --approve        # 批准并应用
+huaqi personality review <id> --reject         # 拒绝
+huaqi personality review <id> --approve --notes "手动确认"
+```
+
+---
+
+## 内容流水线 `pipeline`
+
+```bash
+huaqi pipeline run                             # 执行流水线（采集 → 处理 → 草稿）
+huaqi pipeline run --dry-run                   # 预览模式，不写入
+huaqi pipeline run --limit 10                  # 每源采集 10 条（默认 5）
+huaqi pipeline run --source x                  # 仅抓取 X/Twitter
+huaqi pipeline run --source rss                # 仅抓取 RSS
+
+huaqi pipeline drafts                          # 查看草稿列表
+huaqi pipeline drafts --limit 20
+
+huaqi pipeline review                          # 列出待审核任务
+huaqi pipeline review <task-id>                # 查看任务详情
+huaqi pipeline review <task-id> --approve 0   # 通过第 0 项
+huaqi pipeline review <task-id> --reject 1    # 拒绝第 1 项
+huaqi pipeline review <task-id> --publish      # 发布已审核内容
+```
+
+---
+
+## 后台任务 `daemon`
+
+```bash
+huaqi daemon start                             # 后台启动定时任务
+huaqi daemon start --foreground               # 前台运行（Ctrl+C 停止）
+huaqi daemon stop                              # 停止
+huaqi daemon status                            # 查看运行状态和任务列表
+huaqi daemon list                              # 列出所有注册任务
+```
+
+---
+
+## 系统管理 `system`
+
+```bash
+huaqi system migrate                           # 执行数据迁移 v3→v4
+huaqi system migrate --dry-run                 # 预览迁移内容
+huaqi system migrate --skip-backup             # 跳过备份（不推荐）
+
+huaqi system hot-reload status                 # 配置热重载状态
+huaqi system hot-reload start                  # 启动热重载
+huaqi system hot-reload stop                   # 停止热重载
+
+huaqi system backup                            # 创建 memory/ 备份快照
+```
+
+---
 
 ## 完整工作流示例
 
 ```bash
-# 1. 初始化配置
-huaqi-I config init
-huaqi-I auth create-local --email user@example.com --username demo
+# 1. 首次配置
+huaqi --data-dir ~/huaqi config set-llm openai \
+  --api-key $OPENAI_API_KEY \
+  --api-base https://api.openai.com/v1
 
-# 2. 配置个性
-huaqi-I personality preset companion
-huaqi-I personality set empathy 0.9
-huaqi-I personality set humor 0.3
+# 2. 设置用户信息
+huaqi profile set name 子蒙
+huaqi profile set occupation 工程师
+huaqi profile set skills "Python,LangChain,LangGraph"
 
-# 3. 添加技能和目标
-huaqi-I growth skill-add Python --category coding
-huaqi-I growth goal-add "完成 Huaqi Phase 3" --category short_term
+# 3. 开始对话（内置日记、技能、目标管理）
+huaqi chat
+# 在对话中：
+#   /diary       写今日日记
+#   /skill Python 添加技能
+#   /goal "完成项目重构" 设定目标
 
-# 4. 查看 Hook 状态
-huaqi-I hooks list
+# 4. 查看本周报告
+# 在对话中：/report
 
-# 5. 开始对话（会自动触发 Phase 3 特性）
-huaqi-I chat
+# 5. 生成 AI 画像
+huaqi profile refresh
 
-# 6. 记录学习进展
-huaqi-I growth skill-log Python --hours 3 --notes "完成了 CLI 集成"
-huaqi-I growth goal-progress goal_xxx 100
-huaqi-I growth goal-complete goal_xxx
-
-# 7. 生成周报
-huaqi-I growth report weekly
-```
-
-## 数据存储
-
-所有数据存储在 `~/.huaqi/users_data/{user_id}/`：
-
-```
-~/.huaqi/
-├── users_data/
-│   └── {user_id}/
-│       ├── config/
-│       │   └── personality.yaml    # 个性配置
-│       ├── hooks/
-│       │   ├── morning-greeting.json
-│       │   ├── daily-summary.json
-│       │   └── memory-insight.json
-│       ├── growth/
-│       │   ├── skills.yaml         # 技能追踪
-│       │   └── goals.yaml          # 目标管理
-│       └── memory/
-│           ├── conversations/      # 对话历史
-│           └── ...
-```
-
-## 其他命令
-
-```bash
-# 系统状态
-huaqi-I status
-huaqi-I version
-
-# 配置管理
-huaqi-I config show
-huaqi-I config get llm_default_provider
-huaqi-I config set llm_default_provider claude
-
-# 记忆管理
-huaqi-I memory init
-huaqi-I memory search "Python"
-huaqi-I memory status
-
-# 同步
-huaqi-I sync status
-huaqi-I sync push
-huaqi-I sync pull
-```
-
-## 创建快捷方式
-
-```bash
-# 添加到 ~/.bashrc 或 ~/.zshrc
-alias huaqi-I="/usr/bin/python3 -m huaqi.interface.cli.main"
-
-# 或创建脚本
-ln -s /usr/bin/python3 /usr/local/bin/huaqi-I
-echo 'exec /usr/bin/python3 -m huaqi.interface.cli.main "$@"' > /usr/local/bin/huaqi-I
-chmod +x /usr/local/bin/huaqi-I
+# 6. 运行内容流水线
+huaqi pipeline run --dry-run   # 先预览
+huaqi pipeline run             # 正式运行
+huaqi pipeline review          # 审核草稿
 ```

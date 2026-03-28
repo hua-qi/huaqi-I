@@ -2,7 +2,7 @@
 """测试 LLM API 连接
 
 使用方法:
-    python3 test_llm_connection.py
+    python3 tests/unit/test_llm_connection.py
 
 支持的环境变量:
     WQ_API_KEY: 万擎 API 密钥
@@ -43,7 +43,6 @@ def test_api_key():
 def test_api_base():
     """测试 API Base"""
     print("\n[3/5] 检查 API Base...")
-    # 办公网调用地址
     api_base = "https://wanqing-api.corp.kuaishou.com/api/gateway/v1/endpoints"
     print(f"  ✅ 使用内网 API Base: {api_base}")
     return api_base
@@ -61,7 +60,6 @@ def test_connection(api_key, api_base):
             timeout=30,
         )
 
-        # 尝试调用 API
         response = client.chat.completions.create(
             model="ep-czo1x9-1774507780045283571",
             messages=[
@@ -133,22 +131,18 @@ def main():
     """主函数"""
     print("Huaqi LLM 连接测试")
 
-    # 检查依赖
     if not test_import():
         sys.exit(1)
 
-    # 检查配置
     api_key = test_api_key()
     if not api_key:
         sys.exit(1)
 
     api_base = test_api_base()
 
-    # 测试连接
     if not test_connection(api_key, api_base):
         sys.exit(1)
 
-    # 测试流式
     test_streaming(api_key, api_base)
 
     print("\n" + "=" * 50)

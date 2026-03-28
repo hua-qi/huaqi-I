@@ -9,7 +9,6 @@ print("=== 测试 LLM 连接 ===\n")
 
 manager = LLMManager()
 
-# 从配置读取
 import yaml
 config_path = "/Users/lianzimeng/workspace/huaqi/memory/config.yaml"
 with open(config_path) as f:

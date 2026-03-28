@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+### Changed
+- 代码组织重构：`cli.py` 从 2278 行拆分为 `huaqi_src/cli/` 包（`ui.py` / `context.py` / `chat.py` / `commands/`）
+- 代码组织重构：`user_profile.py` 从 1097 行拆分为 `profile_models.py` / `profile_manager.py` / `profile_narrative.py` / `profile_extractor.py`
+- `user_profile.py` 保留为向后兼容的 re-export 入口，所有现有导入无需修改
+- 新增 `huaqi_src/core/__init__.py`，统一导出 core 层公开 API
+- 清理 5 个空目录（`orchestration/`、`security/`、`skills/`、`memory/layers/`、`memory/sync/`）
+- 迁移根目录散落的测试脚本到 `tests/unit/`
+
+### Added
+- 新增 `docs/guides/code-organization.md` 代码及文件组织规范（供 agent 生成代码参考）
+
 ## [0.2.0] - 2026-03-28
 
 ### Added

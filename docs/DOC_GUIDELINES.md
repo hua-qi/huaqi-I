@@ -28,6 +28,7 @@ huaqi-growing/
 │   │   │   └── impl.md              # 主动关怀实现
 │   │   └── pattern-learning.md      # 模式学习
 │   ├── guides/                      # 用户与开发者指南
+│   │   ├── code-organization.md     # 代码及文件组织规范（供 agent 参考）
 │   │   ├── cli-guide.md             # CLI 命令完整参考
 │   │   ├── usage.md                 # 开发集成使用指南
 │   │   └── cli-ui-improvements.md   # CLI/UI 改进方案
@@ -39,7 +40,8 @@ huaqi-growing/
 └── spec/
     ├── decisions/                   # 架构决策记录 (ADR)
     │   ├── ADR-000-project-origins.md
-    │   └── ADR-001-initial-design.md
+    │   ├── ADR-001-initial-design.md
+    │   └── ADR-002-code-organization-refactor.md
     ├── roadmap/
     │   └── ROADMAP.md               # 项目路线图
     ├── IMPORT_GUIDE.md
