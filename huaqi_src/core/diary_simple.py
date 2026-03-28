@@ -31,15 +31,48 @@ class DiaryStore:
         self.diary_dir.mkdir(parents=True, exist_ok=True)
         self._git_committer = git_committer
 
-    def _get_diary_path(self, date: str) -> Path:
-        """获取日记文件路径"""
+    def _get_diary_path(self, date: str, suffix: str = "") -> Path:
+        """获取日记文件路径
+
+        Args:
+            date: 日期 (YYYY-MM-DD)
+            suffix: 可选后缀，用于区分同一天的多篇日记
+        """
         # 按年/月组织目录
         year_month = date[:7]  # YYYY-MM
         dir_path = self.diary_dir / year_month
         dir_path.mkdir(parents=True, exist_ok=True)
+
+        if suffix:
+            return dir_path / f"{date}-{suffix}.md"
         return dir_path / f"{date}.md"
 
-    def save(self, date: str, content: str, mood: Optional[str] = None, tags: List[str] = None) -> DiaryEntry:
+    def _get_unique_diary_path(self, date: str, original_name: str = "") -> Path:
+        """获取唯一的日记文件路径，避免覆盖
+
+        Args:
+            date: 日期 (YYYY-MM-DD)
+            original_name: 原始文件名（用于生成唯一标识）
+
+        Returns:
+            Path: 唯一的文件路径
+        """
+        base_path = self._get_diary_path(date)
+        if not base_path.exists():
+            return base_path
+
+        # 已有同名文件，需要生成唯一标识
+        if original_name:
+            # 使用原始文件名的哈希或简化版本作为后缀
+            import hashlib
+            suffix = hashlib.md5(original_name.encode()).hexdigest()[:8]
+        else:
+            # 使用当前时间戳
+            suffix = datetime.now().strftime("%H%M%S")
+
+        return self._get_diary_path(date, suffix)
+
+    def save(self, date: str, content: str, mood: Optional[str] = None, tags: List[str] = None, suffix: str = "") -> DiaryEntry:
         """保存日记
 
         Args:
@@ -47,11 +80,15 @@ class DiaryStore:
             content: 日记内容
             mood: 情绪 (可选)
             tags: 标签列表 (可选)
+            suffix: 文件后缀，用于区分同一天的多篇日记
 
         Returns:
             DiaryEntry: 日记条目
         """
-        filepath = self._get_diary_path(date)
+        if suffix:
+            filepath = self._get_diary_path(date, suffix)
+        else:
+            filepath = self._get_diary_path(date)
 
         entry = DiaryEntry(
             date=date,
@@ -316,12 +353,17 @@ class DiaryStore:
                 # 解析内容
                 entry = self._parse_markdown(content)
 
+                # 生成唯一路径避免覆盖
+                filepath = self._get_unique_diary_path(date_str, filepath.name)
+                suffix = filepath.stem.replace(date_str, "").lstrip("-") if date_str in filepath.stem else ""
+
                 # 保存日记
                 self.save(
                     date=date_str,
                     content=entry.content,
                     mood=entry.mood,
-                    tags=entry.tags
+                    tags=entry.tags,
+                    suffix=suffix
                 )
                 count += 1
 

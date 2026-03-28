@@ -49,6 +49,8 @@ dependencies = [
     "watchdog>=4.0.0",
     # 结构化日志
     "structlog>=24.0.0",
+    # CLI 语法高亮
+    "pygments>=2.15.0",
 ]
 
 [project.optional-dependencies]

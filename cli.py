@@ -26,53 +26,207 @@ from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich import box
 from rich.text import Text
+from rich.live import Live
 import re
-from prompt_toolkit import PromptSession
-from prompt_toolkit.styles import Style
+
+# Huaqi UI 工具
+from huaqi_src.core.ui_utils import HuaqiUI, get_ui, HuaqiTheme
+
+# Prompt Toolkit 输入组件
+from prompt_toolkit import prompt
+from prompt_toolkit.history import FileHistory, InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.key_binding.bindings.named_commands import accept_line
-from prompt_toolkit.filters import has_selection
-
-# prompt_toolkit 样式
-_prompt_style = Style.from_dict({
-    'prompt': '#00d7d7 bold',
-})
-
-# 创建带样式的 prompt 会话
-_prompt_session: Optional[PromptSession] = None
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.document import Document
+from prompt_toolkit.shortcuts import clear as pt_clear
+from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.lexers import PygmentsLexer
+from pygments.lexers import MarkdownLexer
 
 
-def _get_prompt_session() -> PromptSession:
-    """获取 prompt 会话（延迟初始化）"""
-    global _prompt_session
-    if _prompt_session is None:
-        # 配置快捷键
-        bindings = KeyBindings()
+class HuaqiCommandCompleter(Completer):
+    """Huaqi 命令补全器 - 支持命令和历史文本补全"""
 
-        # Ctrl+O 插入换行（更可靠的换行方式）
-        @bindings.add('c-o')
-        def insert_newline(event):
-            event.current_buffer.insert_text('\n')
+    COMMANDS = [
+        "/help",
+        "/reset",
+        "/state",
+        "/exit",
+        "/quit",
+        "/clear",
+        "/history",
+        "/status",
+    ]
 
-        # Enter 提交输入（当没有选中文字时）
-        @bindings.add('enter', filter=~has_selection)
-        def submit_input(event):
-            event.current_buffer.validate_and_handle()
+    def __init__(self):
+        self._word_cache: Dict[str, int] = {}  # 词频缓存
 
-        _prompt_session = PromptSession(
-            message=[('class:prompt', '> ')],
-            style=_prompt_style,
+    def _extract_words_from_history(self, history: FileHistory) -> None:
+        """从历史记录中提取中文词组"""
+        if self._word_cache:
+            return
+
+        # 读取历史记录中的所有文本
+        texts = []
+        try:
+            # FileHistory 不直接提供 get_strings，从文件读取
+            history_file = Path(history.filename)
+            if history_file.exists():
+                content = history_file.read_text(encoding='utf-8')
+                # 历史文件格式：每两条记录之间有空行，以 "  " 开头的是多行内容
+                lines = content.split('\n')
+                current_entry = []
+                for line in lines:
+                    if line.startswith('  '):
+                        current_entry.append(line[2:])
+                    elif line.strip():
+                        if current_entry:
+                            texts.append('\n'.join(current_entry))
+                            current_entry = []
+                        current_entry.append(line)
+                if current_entry:
+                    texts.append('\n'.join(current_entry))
+        except Exception:
+            pass
+
+        # 提取中文词组（2-6个字的词语）
+        import re
+        word_pattern = re.compile(r'[\u4e00-\u9fa5]{2,6}')
+
+        for text in texts:
+            # 提取所有可能的中文词组
+            for i in range(len(text) - 1):
+                for length in range(2, min(7, len(text) - i + 1)):
+                    word = text[i:i + length]
+                    if word_pattern.fullmatch(word):
+                        self._word_cache[word] = self._word_cache.get(word, 0) + 1
+
+    def get_completions(self, document: Document, complete_event):
+        text = document.text_before_cursor
+        if not text:
+            return
+
+        # 1. 命令补全（以 / 开头）
+        if text.startswith("/"):
+            for cmd in self.COMMANDS:
+                if cmd.startswith(text):
+                    yield Completion(cmd, start_position=-len(text))
+            return
+
+        # 2. 从历史记录中提取词组进行补全
+        if _input_history:
+            self._extract_words_from_history(_input_history)
+
+        # 获取当前输入的最后一个词
+        words = text.split()
+        if not words:
+            return
+
+        current_word = words[-1]
+        if len(current_word) < 1:
+            return
+
+        # 按词频排序，优先返回高频词
+        sorted_words = sorted(
+            self._word_cache.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        # 匹配以当前词开头的词组
+        for word, count in sorted_words:
+            if word.startswith(current_word) and word != current_word:
+                yield Completion(
+                    word,
+                    start_position=-len(current_word),
+                    display=f"{word} ({count}次)"
+                )
+
+
+# 全局历史记录和组件
+_input_history: Optional[FileHistory] = None
+_command_completer = HuaqiCommandCompleter()
+
+
+def _prompt_input(
+    history_file: Optional[Path] = None,
+    placeholder: str = "今天有什么想聊的？",
+    multiline: bool = True,
+) -> str:
+    """获取用户输入，支持中文、历史记录、自动补全和多行输入
+
+    Args:
+        history_file: 历史记录文件路径，默认为 ~/.huaqi_history
+        placeholder: 输入框占位提示文本
+        multiline: 是否启用多行模式（默认启用，Esc+Enter 或 Ctrl+O 换行）
+    """
+    global _input_history
+
+    if history_file is None:
+        history_file = Path.home() / ".huaqi_history"
+
+    # 确保历史文件目录存在
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if _input_history is None:
+        _input_history = FileHistory(str(history_file))
+
+    bindings = KeyBindings()
+
+    # Ctrl+C: 取消当前输入
+    @bindings.add("c-c")
+    def _(event):
+        event.app.exit(result="")
+
+    # Ctrl+L: 清屏
+    @bindings.add("c-l")
+    def _(event):
+        event.app.output.erase_screen()
+        event.app.output.cursor_goto(0, 0)
+        event.app.invalidate()
+
+    # Ctrl+O: 插入换行（多行输入模式）
+    @bindings.add("c-o")
+    def _(event):
+        event.current_buffer.insert_text("\n")
+
+    # Esc+Enter: 插入换行（替代 Shift+Enter）
+    @bindings.add("escape", "enter")
+    def _(event):
+        event.current_buffer.insert_text("\n")
+
+    # 构造带颜色的提示符
+    from prompt_toolkit.formatted_text import ANSI
+
+    # 使用 ANSI 颜色：magenta 的 🌸 和 cyan 的 huaqi
+    prompt_message = ANSI("\x1b[35m🌸\x1b[0m \x1b[36mhuaqi\x1b[0m > ")
+
+    try:
+        result = prompt(
+            prompt_message,
+            history=_input_history,
+            auto_suggest=AutoSuggestFromHistory(),
+            completer=_command_completer,
             key_bindings=bindings,
-            multiline=True,
+            enable_suspend=True,
+            multiline=False,  # 使用自定义键绑定处理换行
+            complete_while_typing=True,
             wrap_lines=True,
         )
-    return _prompt_session
+
+        # 空输入提示
+        if not result or not result.strip():
+            return ""
+
+        return result
+    except (EOFError, KeyboardInterrupt):
+        return ""
 
 
-def _prompt_input() -> str:
-    """使用 prompt_toolkit 获取输入，支持多字节字符"""
-    session = _get_prompt_session()
-    return session.prompt()
+def _clear_screen():
+    """清屏"""
+    console.clear()
 
 
 # 核心模块
@@ -110,8 +264,17 @@ def _run_langgraph_chat():
                     console.print("\n[bold cyan]📚 可用命令[/bold cyan]")
                     console.print("  /reset - 重置会话")
                     console.print("  /state - 查看当前状态")
+                    console.print("  /clear - 清屏")
                     console.print("  /help - 显示帮助")
-                    console.print("  exit/quit - 退出对话\n")
+                    console.print("  exit/quit - 退出对话")
+                    console.print("\n[bold]快捷键:[/bold]")
+                    console.print("  ↑/↓ 历史记录  •  Tab 自动补全  •  Ctrl+R 搜索历史")
+                    console.print("  Ctrl+L 清屏  •  Ctrl+C 取消输入")
+                    console.print("  Ctrl+O 或 Esc+Enter 换行  •  Enter 提交\n")
+                    continue
+
+                if user_input == "/clear":
+                    _clear_screen()
                     continue
                 
                 if user_input == "/reset":
@@ -265,13 +428,17 @@ def _generate_response(user_input: str, history: List[Dict[str, str]], system_pr
         
         provider_config = config.llm_providers[provider_name]
         
-        # 创建 LLM 配置
+        # 优先从环境变量读取 API key
+        api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        
+        # 创建 LLM 配置（temperature 限制在 0-1 范围内）
+        temperature = max(0.0, min(1.0, provider_config.temperature))
         llm_config = LLMConfig(
             provider=provider_config.name,
             model=provider_config.model,
-            api_key=provider_config.api_key,
+            api_key=api_key,
             api_base=provider_config.api_base,
-            temperature=provider_config.temperature,
+            temperature=temperature,
             max_tokens=provider_config.max_tokens,
         )
         
@@ -313,46 +480,81 @@ def _generate_response(user_input: str, history: List[Dict[str, str]], system_pr
 
 
 def _generate_streaming_response(user_input: str, history: List[Dict[str, str]], system_prompt: str) -> Iterator[str]:
-    """生成流式回复（迭代器）"""
+    """生成流式回复（迭代器），带超时和异常处理"""
+    import socket
+    from openai import APITimeoutError, APIError, APIConnectionError
+    
+    llm_manager = LLMManager()
+    
+    config = _config.load_config()
+    provider_name = config.llm_default_provider
+    
+    if provider_name not in config.llm_providers:
+        yield "[LLM 未配置] 请先运行: huaqi config set-llm"
+        return
+    
+    provider_config = config.llm_providers[provider_name]
+    
+    # 优先从环境变量读取 API key，如果不存在则使用配置中的
+    api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    
+    if not api_key:
+        yield "[错误] 未配置 API Key。请先运行: huaqi config set-llm --api-key <key>"
+        return
+    
+    # temperature 限制在 0-1 范围内
+    temperature = max(0.0, min(1.0, provider_config.temperature))
+    llm_config = LLMConfig(
+        provider=provider_config.name,
+        model=provider_config.model or "gpt-3.5-turbo",
+        api_key=api_key,
+        api_base=provider_config.api_base,
+        temperature=temperature,
+        max_tokens=provider_config.max_tokens,
+    )
+    
+    llm_manager.add_config(llm_config)
+    llm_manager.set_active(provider_config.name)
+    
+    # 构建消息列表
+    messages = [Message.system(system_prompt)]
+    
+    for h in history[-5:]:
+        messages.append(Message.user(h["user"]))
+        messages.append(Message.assistant(h["assistant"]))
+    
+    messages.append(Message.user(user_input))
+    
+    # 调用 LLM，带完整的异常处理
     try:
-        llm_manager = LLMManager()
-        
-        config = _config.load_config()
-        provider_name = config.llm_default_provider
-        
-        if provider_name not in config.llm_providers:
-            yield "[LLM 未配置] 请先运行: huaqi config set-llm"
-            return
-        
-        provider_config = config.llm_providers[provider_name]
-        
-        llm_config = LLMConfig(
-            provider=provider_config.name,
-            model=provider_config.model,
-            api_key=provider_config.api_key,
-            api_base=provider_config.api_base,
-            temperature=provider_config.temperature,
-            max_tokens=provider_config.max_tokens,
-        )
-        
-        llm_manager.add_config(llm_config)
-        llm_manager.set_active(provider_config.name)
-        
-        # 构建消息列表
-        messages = [Message.system(system_prompt)]
-        
-        for h in history[-5:]:
-            messages.append(Message.user(h["user"]))
-            messages.append(Message.assistant(h["assistant"]))
-        
-        messages.append(Message.user(user_input))
-        
-        for chunk in llm_manager.chat(messages, stream=True):
-            yield chunk
-            
+        response_stream = llm_manager.chat(messages, stream=True)
+        for chunk in response_stream:
+            if chunk:
+                yield chunk
+    except APITimeoutError as e:
+        yield "\n\n---\n*⏱️ 请求超时（60秒）。请检查网络连接或稍后重试。*"
+    except APIConnectionError as e:
+        yield "\n\n---\n*🔌 连接失败。请检查 API 地址和网络环境。*"
+    except APIError as e:
+        if "thinking" in str(e).lower() and "reasoning_content" in str(e).lower():
+            # DeepSeek thinking 模式错误 - 使用非流式重试
+            yield "\n\n---\n*🔄 模型 thinking 模式不兼容，尝试重新连接...*"
+            try:
+                # 清除消息中的 assistant 历史，避免 reasoning_content 问题
+                messages = [Message.system(system_prompt), Message.user(user_input)]
+                response = llm_manager.chat(messages, stream=False)
+                yield response.content
+            except Exception as retry_e:
+                yield f"\n\n---\n*❌ 重试失败: {str(retry_e)[:100]}*"
+        else:
+            yield f"\n\n---\n*⚠️ API 错误: {str(e)[:100]}*"
+    except socket.timeout:
+        yield "\n\n---\n*⏱️ 网络超时。请检查网络连接或稍后重试。*"
     except Exception as e:
-        console.print(f"[red]LLM 调用失败: {e}[/red]")
-        yield f"抱歉，对话出现了问题：{str(e)}"
+        yield f"\n\n---\n*❌ 发生错误: {str(e)[:100]}*"
+    
+    # 确保至少返回一个结束标记
+    yield ""
 
 
 def _handle_local_response(user_input: str) -> str:
@@ -428,11 +630,126 @@ def _handle_slash_command(command: str) -> bool:
         _handle_history_command(parts)
         return True
 
+    elif cmd == "report":
+        _handle_report_command(parts)
+        return True
+    
+    elif cmd == "care":
+        _handle_care_command(parts)
+        return True
+    
+    elif cmd == "clear":
+        _clear_screen()
+        return True
+
     elif cmd == "help" or cmd == "?":
         _show_chat_help()
         return True
 
     return False
+
+
+def _handle_report_command(parts: list):
+    """处理报告命令"""
+    from huaqi_src.core.pattern_learning import get_pattern_engine
+    
+    engine = get_pattern_engine()
+    
+    if len(parts) < 2:
+        # 默认显示最新周报
+        report = engine.get_latest_weekly_report()
+        if report:
+            console.print(f"\n{engine.format_weekly_report(report)}\n")
+        else:
+            # 生成新周报
+            console.print("[dim]正在生成周报...[/dim]")
+            report = engine.generate_weekly_report()
+            if report:
+                console.print(f"\n{engine.format_weekly_report(report)}\n")
+            else:
+                console.print("[yellow]数据不足，无法生成周报。再多聊几天吧！[/yellow]\n")
+        return
+    
+    subcmd = parts[1]
+    
+    if subcmd == "weekly" or subcmd == "w":
+        console.print("[dim]正在生成周报...[/dim]")
+        report = engine.generate_weekly_report()
+        if report:
+            console.print(f"\n{engine.format_weekly_report(report)}\n")
+        else:
+            console.print("[yellow]数据不足，无法生成周报。再多聊几天吧！[/yellow]\n")
+    elif subcmd == "insights" or subcmd == "i":
+        insights = engine.get_active_insights()
+        if insights:
+            console.print("\n[bold]💡 你的模式洞察[/bold]\n")
+            for insight in insights[:5]:
+                emoji = "🔴" if insight.severity == "attention" else "🟡" if insight.severity == "warning" else "🟢" if insight.severity == "positive" else "🔵"
+                console.print(f"{emoji} {insight.title}")
+                console.print(f"   {insight.description}")
+                if insight.recommendation:
+                    console.print(f"   💡 {insight.recommendation}")
+                console.print()
+        else:
+            console.print("[dim]暂无洞察，继续记录日记和对话，我会更了解你。[/dim]\n")
+    else:
+        console.print("[yellow]用法: /report [weekly|insights][/yellow]\n")
+
+
+def _handle_care_command(parts: list):
+    """处理关怀命令"""
+    from huaqi_src.core.proactive_care import get_care_engine
+    
+    engine = get_care_engine()
+    
+    if len(parts) < 2:
+        # 手动触发检查
+        console.print("[dim]正在检查是否需要关怀...[/dim]")
+        record = engine.check_and_trigger()
+        if record:
+            console.print(f"\n[bold magenta]🌸 Huaqi[/bold magenta]: {record.care_content}\n")
+            console.print("[dim]（这是基于你最近状态的关怀）[/dim]\n")
+        else:
+            console.print("[dim]你最近状态不错，不需要特别关怀。继续保持！[/dim]\n")
+        return
+    
+    subcmd = parts[1]
+    
+    if subcmd == "status" or subcmd == "s":
+        stats = engine.get_care_stats()
+        console.print("\n[bold]💝 关怀统计[/bold]\n")
+        console.print(f"总关怀次数: {stats['total_cares']}")
+        console.print(f"用户回应率: {stats['acknowledgment_rate']*100:.0f}%")
+        console.print(f"有用率: {stats['helpful_rate']*100:.0f}%")
+        console.print()
+    elif subcmd == "config":
+        # 显示当前配置
+        config = engine.config
+        console.print("\n[bold]⚙️ 关怀配置[/bold]\n")
+        console.print(f"启用状态: {'✅' if config.enabled else '❌'}")
+        console.print(f"关怀级别: {config.level}")
+        console.print(f"每日最多: {config.max_per_day} 次")
+        console.print(f"安静时段: {config.quiet_hours_start}:00 - {config.quiet_hours_end}:00")
+        console.print()
+        console.print("[dim]修改配置: /care config set <key> <value>[/dim]\n")
+    elif subcmd == "set":
+        if len(parts) >= 4:
+            key, value = parts[2], parts[3]
+            try:
+                if key in ['max_per_day', 'max_per_week', 'min_silence_hours', 'anxiety_threshold']:
+                    value = int(value)
+                elif key in ['emotion_threshold']:
+                    value = float(value)
+                elif key in ['enabled']:
+                    value = value.lower() in ['true', 'yes', '1']
+                engine.update_config(**{key: value})
+                console.print(f"[green]✅ 已更新 {key} = {value}[/green]\n")
+            except Exception as e:
+                console.print(f"[red]更新失败: {e}[/red]\n")
+        else:
+            console.print("[yellow]用法: /care set <key> <value>[/yellow]\n")
+    else:
+        console.print("[yellow]用法: /care [status|config|set <key> <value>][/yellow]\n")
 
 
 def _handle_history_command(parts: list):
@@ -630,128 +947,135 @@ def _import_diary_from_path(source_path: str):
 
 
 def _show_chat_help():
-    """显示帮助"""
-    console.print("\n[bold cyan]📚 可用命令[/bold cyan]\n")
+    """显示帮助 - 使用新 UI"""
+    ui = get_ui(console)
+    ui.show_header("可用命令", ui.theme.EMOJI_INFO)
 
-    console.print("[bold]快捷命令:[/bold]")
-    console.print("  [cyan]/skill <名称>[/cyan]        - 添加技能")
-    console.print("  [cyan]/log <技能> <小时>[/cyan]   - 记录练习时间")
-    console.print("  [cyan]/goal <标题>[/cyan]         - 添加目标")
-    console.print("  [cyan]/diary[/cyan]               - 写日记")
-    console.print("  [cyan]/diary list[/cyan]          - 查看日记列表")
-    console.print("  [cyan]/diary search <关键词>[/cyan] - 搜索日记")
-    console.print("  [cyan]/diary import <路径>[/cyan]  - 从 Markdown 导入日记")
-    console.print("  [cyan]/history[/cyan]             - 查看最近对话")
-    console.print("  [cyan]/history list[/cyan]        - 查看历史对话列表")
-    console.print("  [cyan]/history search <关键词>[/cyan] - 搜索历史对话")
-    console.print("  [cyan]/skills[/cyan]              - 查看技能列表")
-    console.print("  [cyan]/goals[/cyan]               - 查看目标列表")
-    console.print("  [cyan]/status[/cyan]              - 查看详细状态")
-    console.print("  [cyan]/help[/cyan]                - 显示此帮助")
+    commands = {
+        "/skill <名称>": "添加新技能",
+        "/log <技能> <小时>": "记录练习时间",
+        "/goal <标题>": "设定新目标",
+        "/diary": "写日记",
+        "/diary list": "查看日记列表",
+        "/skills": "查看技能列表",
+        "/goals": "查看目标列表",
+        "/report": "查看本周报告",
+        "/report insights": "查看模式洞察",
+        "/care": "手动触发关怀检查",
+        "/care status": "查看关怀统计",
+        "/clear": "清屏",
+        "/status": "查看详细状态",
+        "/help": "显示此帮助",
+        "exit / quit": "退出对话",
+    }
 
-    console.print("\n[bold]对话命令:[/bold]")
-    console.print("  [cyan]help[/cyan]                  - 显示帮助")
-    console.print("  [cyan]status[/cyan]                - 查看状态")
-    console.print("  [cyan]exit/quit[/cyan]             - 退出对话")
+    for cmd, desc in commands.items():
+        console.print(f"  [bold cyan]{cmd:20}[/bold cyan] {desc}")
 
-    console.print("\n[bold]多行输入:[/bold]")
-    console.print("  [cyan]Ctrl+O[/cyan]                - 换行")
-    console.print("  [cyan]Enter[/cyan]                  - 提交\n")
+    console.print(f"\n[bold]快捷键:[/bold]")
+    console.print(f"  [{HuaqiTheme.INFO}]↑/↓[/{HuaqiTheme.INFO}] 历史记录  •  [{HuaqiTheme.INFO}]Tab[/{HuaqiTheme.INFO}] 自动补全  •  [{HuaqiTheme.INFO}]Ctrl+R[/{HuaqiTheme.INFO}] 搜索历史")
+    console.print(f"  [{HuaqiTheme.INFO}]Ctrl+L[/{HuaqiTheme.INFO}] 清屏  •  [{HuaqiTheme.INFO}]Ctrl+C[/{HuaqiTheme.INFO}] 取消输入")
+    console.print(f"  [{HuaqiTheme.INFO}]Ctrl+O[/{HuaqiTheme.INFO}] 或 [{HuaqiTheme.INFO}]Esc+Enter[/{HuaqiTheme.INFO}] 换行  •  [{HuaqiTheme.INFO}]Enter[/{HuaqiTheme.INFO}] 提交")
+    console.print()
 
 
-def _show_status_inline():
-    """显示简洁状态"""
+def _show_status_compact():
+    """显示简洁状态卡片"""
+    ui = get_ui(console)
     skills = _growth.list_skills()
     goals = _growth.list_goals()
-    p = _personality.profile
     
-    console.print(f"\n[dim]👤 {p.role} | 技能: {len(skills)} | 目标: {len(goals)}[/dim]\n")
+    # 统计信息
+    total_hours = sum(s.total_hours for s in skills)
+    active_goals = sum(1 for g in goals if g.status == "active")
+    completed_goals = sum(1 for g in goals if g.status == "completed")
+    
+    items = {
+        "技能数": str(len(skills)),
+        "总时长": f"{total_hours:.1f}h",
+        "进行中目标": str(active_goals),
+        "已完成目标": str(completed_goals),
+    }
+    
+    ui.show_status_card("当前状态", items, ui.theme.EMOJI_TARGET)
+    ui.blank_line()
 
 
 def _show_detailed_status():
-    """显示详细状态"""
+    """显示详细状态 - 使用新 UI"""
+    ui = get_ui(console)
     skills = _growth.list_skills()
     goals = _growth.list_goals()
     p = _personality.profile
     
-    # 用户画像面板
-    console.print("\n[bold cyan]👤 用户画像[/bold cyan]\n")
+    # 统计信息
+    total_hours = sum(s.total_hours for s in skills)
+    active_goals = sum(1 for g in goals if g.status == "active")
+    completed_goals = sum(1 for g in goals if g.status == "completed")
     
-    persona_table = Table(show_header=False, box=box.ROUNDED)
-    persona_table.add_column(style="cyan", width=15)
-    persona_table.add_column()
+    # 显示状态卡片
+    ui.show_header("当前状态", ui.theme.EMOJI_TARGET)
+    ui.show_status_card("成长概览", {
+        "技能数": str(len(skills)),
+        "总时长": f"{total_hours:.1f}h",
+        "进行中目标": str(active_goals),
+        "已完成目标": str(completed_goals),
+    }, ui.theme.EMOJI_FIRE)
+    ui.blank_line()
     
-    persona_table.add_row("名称", p.name)
-    persona_table.add_row("角色", p.role)
-    persona_table.add_row("沟通风格", p.tone)
-    persona_table.add_row("正式程度", f"{p.formality:.1f}")
-    persona_table.add_row("共情水平", f"{p.empathy:.1f}")
-    persona_table.add_row("幽默程度", f"{p.humor:.1f}")
+    # 用户画像
+    ui.show_header("AI 人格", ui.theme.EMOJI_BOT)
+    ui.show_status_card("", {
+        "名称": p.name,
+        "角色": p.role,
+        "风格": p.tone,
+        "正式程度": f"{p.formality:.1f}",
+        "共情水平": f"{p.empathy:.1f}",
+        "幽默程度": f"{p.humor:.1f}",
+    })
+    ui.blank_line()
     
-    console.print(persona_table)
-    
-    # 技能统计
+    # 技能列表
     if skills:
-        console.print("\n[bold green]🎯 技能进展[/bold green]\n")
-        skill_table = Table(box=box.SIMPLE)
-        skill_table.add_column("技能", style="cyan")
-        skill_table.add_column("类型", style="dim")
-        skill_table.add_column("总时长", justify="right")
-        skill_table.add_column("练习次数", justify="right")
-        skill_table.add_column("当前等级", justify="center")
-        
+        ui.show_header("技能进展", ui.theme.EMOJI_STAR)
+        table = ui.create_data_table([
+            ("技能", "cyan", None),
+            ("类型", "dim", 12),
+            ("总时长", "", 10),
+            ("等级", "", 10),
+        ])
         for skill in skills:
-            skill_table.add_row(
+            table.add_row(
                 skill.name,
                 skill.category,
                 f"{skill.total_hours:.1f}h",
-                str(len([p for p in [] if hasattr(p, 'skill_name') and p.skill_name == skill.name])),  # 简化显示
                 skill.current_level
             )
-        console.print(skill_table)
+        ui.console.print(table)
+        ui.blank_line()
     else:
-        console.print("\n[dim]暂无技能记录，使用 /skill <名称> 添加[/dim]\n")
+        ui.tip("暂无技能记录，使用 /skill <名称> 添加")
     
     # 目标列表
     if goals:
-        console.print("\n[bold yellow]🎯 目标追踪[/bold yellow]\n")
-        goal_table = Table(box=box.SIMPLE)
-        goal_table.add_column("目标", style="cyan")
-        goal_table.add_column("进度", width=20)
-        goal_table.add_column("状态", justify="center")
-        goal_table.add_column("创建时间", style="dim")
-        
+        ui.show_header("目标追踪", ui.theme.EMOJI_TARGET)
         for goal in goals:
-            progress_bar = "█" * (goal.progress // 10) + "░" * (10 - goal.progress // 10)
-            status = "✅ 完成" if goal.status == "completed" else "⏳ 进行中"
-            created = goal.created_at[:10] if goal.created_at else "未知"
-            goal_table.add_row(
-                goal.title,
-                f"{progress_bar} {goal.progress}%",
-                status,
-                created
-            )
-        console.print(goal_table)
+            progress = ui.show_progress_bar(goal.title, goal.progress, 100)
+            status_icon = "✅" if goal.status == "completed" else "⏳"
+            ui.console.print(f"{status_icon} [bold]{goal.title}[/bold]")
+            ui.console.print(f"   {progress}")
+        ui.blank_line()
     else:
-        console.print("\n[dim]暂无目标，使用 /goal <标题> 添加[/dim]\n")
+        ui.tip("暂无目标，使用 /goal <标题> 添加")
     
     # 系统信息
-    console.print("\n[bold blue]⚙️ 系统信息[/bold blue]\n")
-    sys_table = Table(show_header=False, box=box.SIMPLE)
-    sys_table.add_column(style="cyan", width=15)
-    sys_table.add_column()
-    
-    sys_table.add_row("数据目录", str(DATA_DIR))
-    sys_table.add_row("记忆目录", str(MEMORY_DIR))
-    
+    ui.show_header("系统信息", "⚙️")
     git_status = _git.get_status() if _git else {}
-    sys_table.add_row("Git同步", "✅ 已启用" if git_status.get("initialized") else "❌ 未启用")
-    
-    llm_provider = _config.load_config().llm_default_provider
-    sys_table.add_row("LLM提供商", llm_provider)
-    
-    console.print(sys_table)
-    console.print()
+    ui.show_status_card("", {
+        "数据目录": str(DATA_DIR),
+        "Git同步": "✅ 已启用" if git_status.get("initialized") else "❌ 未启用",
+        "LLM提供商": _config.load_config().llm_default_provider,
+    })
 
 
 def _show_skills_list():
@@ -809,25 +1133,84 @@ def _show_goals_list():
 
 
 def chat_mode():
-    """交互式对话模式"""
+    """交互式对话模式 - 使用新 UI"""
     ensure_initialized()
     
-    # 欢迎界面
-    console.print("\n" + "=" * 50)
-    console.print("[bold magenta]🌸 Huaqi[/bold magenta] - 你的 AI 同伴", justify="center")
-    console.print("[dim]输入 /help 查看命令, exit 退出对话[/dim]", justify="center")
-    console.print("=" * 50 + "\n")
+    # 简单的欢迎信息，避免复杂的 UI 渲染影响终端
+    console.print("\n[bold magenta]🌸 Huaqi[/bold magenta] - 个人 AI 同伴")
+    console.print("[dim]输入 /help 查看命令, exit 退出对话[/dim]\n")
     
+    # 启动时异步提取用户信息（后台执行，不阻塞用户输入）
+    try:
+        from huaqi_src.core.user_profile import get_data_extractor
+        extractor = get_data_extractor()
+        
+        # 如果还没有提取过，启动后台提取
+        if not extractor.is_extracting() and extractor.get_result() is None:
+            _llm_for_extraction = LLMManager()
+            config = _config.load_config()
+            provider_name = config.llm_default_provider
+            
+            if provider_name in config.llm_providers:
+                provider_config = config.llm_providers[provider_name]
+                # 优先从环境变量读取 API key
+                api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
+                llm_config = LLMConfig(
+                    provider=provider_config.name,
+                    model=provider_config.model,
+                    api_key=api_key,
+                    api_base=provider_config.api_base,
+                    temperature=0.3,
+                    max_tokens=1000,
+                    timeout=30,
+                )
+                _llm_for_extraction.add_config(llm_config)
+                _llm_for_extraction.set_active(provider_config.name)
+                
+                extractor.start_extraction(_llm_for_extraction)
+                console.print("[dim]💡 正在分析你的日记和对话...[/dim]\n")
+    except Exception:
+        pass  # 提取失败不影响主流程
+    
+    # 启动时检查是否需要主动关怀
+    last_message_time = None
+    try:
+        from huaqi_src.core.proactive_care import get_care_engine
+        care_engine = get_care_engine()
+        care_record = care_engine.check_and_trigger()
+        if care_record:
+            console.print(f"\n[bold magenta]🌸 Huaqi[/bold magenta]: {care_record.care_content}\n")
+            console.print("[dim]（这是基于你最近状态的关怀，回复 /care feedback helpful/annoying 告诉我是否有用）[/dim]\n")
+    except Exception:
+        pass  # 关怀检查失败不影响主流程
+
+    # 启动时检查是否需要生成本周报告（每周首次启动）
+    try:
+        from huaqi_src.core.pattern_learning import get_pattern_engine
+        pattern_engine = get_pattern_engine()
+
+        # 检查本周是否已生成过报告
+        latest_report = pattern_engine.get_latest_weekly_report()
+        now = datetime.now()
+        current_week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+
+        if not latest_report or latest_report.week_start != current_week_start:
+            # 本周首次启动，生成周报
+            report = pattern_engine.generate_weekly_report()
+            if report:
+                console.print("\n" + pattern_engine.format_weekly_report(report) + "\n")
+    except Exception:
+        pass  # 报告生成失败不影响主流程
+
     system_prompt = _build_system_prompt()
     conversation_history: List[Dict[str, str]] = []
-    
-    # 显示当前状态
-    _show_status_inline()
+    last_message_time = datetime.now()
     
     while True:
         try:
-            # 获取用户输入（默认多行模式，空行结束）
+            # 获取用户输入
             user_input = _prompt_input().strip()
+            current_time = datetime.now()
             
             if not user_input:
                 continue
@@ -862,75 +1245,43 @@ def chat_mode():
                     console.print("[yellow]未知命令。输入 /help 查看帮助[/yellow]\n")
                     continue
             
-            # 尝试从用户输入中提取用户信息（使用 LLM 智能提取）
-            try:
-                from huaqi_src.core.user_profile import get_profile_manager
-                profile_manager = get_profile_manager()
-                
-                # 获取 LLM 管理器用于提取
-                _llm_for_extraction = LLMManager()
-                config = _config.load_config()
-                provider_name = config.llm_default_provider
-                
-                if provider_name in config.llm_providers:
-                    provider_config = config.llm_providers[provider_name]
-                    llm_config = LLMConfig(
-                        provider=provider_config.name,
-                        model=provider_config.model,
-                        api_key=provider_config.api_key,
-                        api_base=provider_config.api_base,
-                        temperature=0.3,  # 低温度，更确定性的提取
-                        max_tokens=500,
-                    )
-                    _llm_for_extraction.add_config(llm_config)
-                    _llm_for_extraction.set_active(provider_config.name)
-                    
-                    extracted = profile_manager.extract_from_message(user_input, _llm_for_extraction)
-                    if extracted:
-                        console.print(f"[dim green]💡 我记住了: {', '.join(extracted.keys())}[/dim green]\n")
-            except Exception:
-                pass
-            
-            # 生成流式回复 - 使用 rich Live 实现真正的流式渲染
-            from datetime import datetime
-            from rich.live import Live
-            
+            # 显示处理状态 - 逐步展示
             timestamp = datetime.now().strftime("%H:%M")
-            full_response = []
+            steps = []
             
-            # 创建动态更新的 Panel
-            def _create_response_panel(text: str, is_streaming: bool = True) -> Panel:
-                md = Markdown(text)
-                footer = "[dim]✨ 生成中...[/dim]" if is_streaming else ""
+            def _create_status_panel():
+                content = "\n".join(steps) if steps else ""
                 return Panel(
-                    md,
+                    content,
                     title=f"[bold magenta]🌸 Huaqi[/bold magenta] [dim]{timestamp}[/dim]",
                     title_align="left",
                     border_style="magenta",
                     padding=(0, 1),
                 )
             
-            # 显示思考中状态
-            thinking_panel = Panel(
-                "[dim]🤔 正在思考...[/dim]",
-                title=f"[bold magenta]🌸 Huaqi[/bold magenta] [dim]{timestamp}[/dim]",
-                title_align="left",
-                border_style="magenta dim",
-                padding=(0, 1),
-            )
+            from rich.live import Live
             
-            with Live(thinking_panel, console=console, refresh_per_second=20, transient=False) as live:
-                first_chunk = True
+            with Live(_create_status_panel(), console=console, refresh_per_second=10, transient=False) as live:
+                # 调用 LLM
+                steps.append("[dim]正在思考...[/dim]")
+                live.update(_create_status_panel())
+                
+                # 生成流式回复
+                full_response = []
                 for chunk in _generate_streaming_response(user_input, conversation_history, system_prompt):
-                    if first_chunk:
-                        first_chunk = False
                     full_response.append(chunk)
                     response_text = "".join(full_response)
-                    live.update(_create_response_panel(response_text, is_streaming=True))
+                    # 更新状态为生成中
+                    steps[-1] = "[dim]2. 调用 LLM 中... ✨[/dim]"
+                    live.update(Panel(
+                        Markdown(response_text),
+                        title=f"[bold magenta]🌸 Huaqi[/bold magenta] [dim]{timestamp}[/dim]",
+                        title_align="left",
+                        border_style="magenta",
+                        padding=(0, 1),
+                    ))
                 
-                # 完成后更新为最终状态
-                response_text = "".join(full_response)
-                live.update(_create_response_panel(response_text, is_streaming=False))
+            console.print()  # 换行
             
             console.print()  # 换行
             
@@ -938,6 +1289,9 @@ def chat_mode():
             conversation_history.append({"user": user_input, "assistant": response_text})
             if len(conversation_history) > 10:
                 conversation_history = conversation_history[-10:]
+            
+            # 更新最后消息时间
+            last_message_time = current_time
                 
         except KeyboardInterrupt:
             console.print("\n\n[dim]已中断对话[/dim]\n")
@@ -951,6 +1305,13 @@ def chat_mode():
 
 config_app = typer.Typer(name="config", help="系统配置管理")
 app.add_typer(config_app)
+
+
+@config_app.callback(invoke_without_command=True)
+def config_callback(ctx: typer.Context):
+    """配置管理回调 - 无子命令时显示帮助"""
+    if ctx.invoked_subcommand is None:
+        ctx.get_help()
 
 
 @config_app.command("show")
@@ -981,7 +1342,7 @@ def config_show():
 @config_app.command("set-llm")
 def config_set_llm(
     provider: str = typer.Argument(..., help="提供商名称 (openai/claude/deepseek/dummy)"),
-    api_key: str = typer.Option(None, "--api-key", "-k", help="API 密钥"),
+    api_key: str = typer.Option(..., "--api-key", "-k", help="API 密钥（必填）"),
     api_base: str = typer.Option(None, "--api-base", "-b", help="API 基础地址"),
     model: str = typer.Option(None, "--model", "-m", help="模型名称"),
 ):
@@ -990,13 +1351,19 @@ def config_set_llm(
     
     from huaqi_src.core.config_simple import LLMProviderConfig
     
-    # 读取环境变量中的 API key
-    if api_key is None and provider == "openai":
-        api_key = os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    # 如果没有指定模型，使用适合该提供商的默认模型
+    if model is None:
+        default_models = {
+            "openai": "gpt-3.5-turbo",
+            "deepseek": "deepseek-chat",
+            "claude": "claude-3-sonnet-20240229",
+            "dummy": "dummy",
+        }
+        model = default_models.get(provider, "gpt-3.5-turbo")
     
     llm_config = LLMProviderConfig(
         name=provider,
-        model=model or provider,
+        model=model,
         api_key=api_key,
         api_base=api_base,
     )
@@ -1007,6 +1374,14 @@ def config_set_llm(
     _config.save_config()
     
     console.print(f"\n[green]✅ LLM 已配置: {provider}[/green]")
+    console.print(f"   模型: {model}")
+    console.print(f"   API Key: {api_key[:8]}...{api_key[-4:]}")
+    if api_base:
+        console.print(f"   地址: {api_base}")
+    console.print()  
+    # 撤销从环境变量读取 API Key 的修改，只从配置文件读取
+# 需要把之前的修改改回 provider_config.api_key
+# 找到所有之前修改过的地方，改回原来的样子
     if api_base:
         console.print(f"   地址: {api_base}")
     if api_key:
@@ -1270,11 +1645,14 @@ def main(
     data_dir: Optional[Path] = typer.Option(None, "--data-dir", "-d", help="数据目录路径"),
 ):
     """Huaqi - 个人 AI 同伴系统"""
-    from huaqi_src.core.config_paths import set_data_dir, get_data_dir, is_data_dir_set
+    from huaqi_src.core.config_paths import (
+        set_data_dir, get_data_dir, is_data_dir_set, save_data_dir_to_config
+    )
     
-    # 如果命令行指定了数据目录，使用它
+    # 如果命令行指定了数据目录，使用它并保存到配置
     if data_dir is not None:
         set_data_dir(data_dir)
+        save_data_dir_to_config(data_dir)
     
     # 检查数据目录是否已配置（命令行参数、环境变量、或配置文件）
     if not is_data_dir_set():

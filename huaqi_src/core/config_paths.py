@@ -12,6 +12,32 @@ from typing import Optional
 _USER_DATA_DIR: Optional[Path] = None
 
 
+def _get_global_config_path() -> Path:
+    """获取全局配置文件路径（用于保存数据目录等全局设置）"""
+    config_dir = Path.home() / ".huaqi"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / "config.yaml"
+
+
+def _load_data_dir_from_config() -> Optional[Path]:
+    """从全局配置文件读取数据目录"""
+    config_path = _get_global_config_path()
+    
+    if config_path.exists():
+        try:
+            import yaml
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if data and "data_dir" in data and data["data_dir"]:
+                    path = Path(data["data_dir"]).expanduser().resolve()
+                    if path.exists():
+                        return path
+        except Exception:
+            pass
+    
+    return None
+
+
 def set_data_dir(path: Path) -> Path:
     """设置用户数据目录
     
@@ -31,12 +57,13 @@ def set_data_dir(path: Path) -> Path:
     return _USER_DATA_DIR
 
 
-def get_data_dir() -> Path:
+def get_data_dir() -> Optional[Path]:
     """获取数据目录
     
     优先级:
     1. 用户通过 set_data_dir() 设置的目录
     2. HUAQI_DATA_DIR 环境变量
+    3. 配置文件中保存的数据目录
     
     如果以上都没有设置，返回 None，由调用者处理错误
     """
@@ -48,8 +75,47 @@ def get_data_dir() -> Path:
     if env_dir := os.getenv("HUAQI_DATA_DIR"):
         return Path(env_dir).expanduser().resolve()
     
+    # 3. 从配置文件读取
+    config_dir = _load_data_dir_from_config()
+    if config_dir is not None:
+        _USER_DATA_DIR = config_dir  # 缓存结果
+        return config_dir
+    
     # 返回 None 表示未配置，由调用者处理
     return None
+
+
+def save_data_dir_to_config(data_dir: Path) -> bool:
+    """保存数据目录到全局配置文件
+    
+    Args:
+        data_dir: 数据目录路径
+        
+    Returns:
+        是否成功保存
+    """
+    try:
+        import yaml
+        
+        config_path = _get_global_config_path()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 读取现有配置或创建新的
+        config_data = {}
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data = yaml.safe_load(f) or {}
+        
+        # 更新数据目录
+        config_data["data_dir"] = str(data_dir.expanduser().resolve())
+        
+        # 保存到全局配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False)
+        
+        return True
+    except Exception:
+        return False
 
 
 def require_data_dir() -> Path:

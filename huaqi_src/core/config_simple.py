@@ -32,6 +32,9 @@ class AppConfig(BaseModel):
     """应用配置"""
     version: str = "0.1.0"
     
+    # 数据目录配置（保存上次使用的数据目录）
+    data_dir: Optional[str] = None
+    
     # LLM 配置
     llm_default_provider: str = "dummy"
     llm_providers: Dict[str, LLMProviderConfig] = Field(default_factory=dict)

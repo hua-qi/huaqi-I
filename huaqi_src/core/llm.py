@@ -9,6 +9,7 @@ from typing import Iterator, Optional, List, Dict, Any, Callable, Union
 from enum import Enum
 import time
 import json
+import sys
 
 
 class MessageRole(Enum):
@@ -25,12 +26,30 @@ class Message:
     role: MessageRole
     content: str
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, str]:
-        return {
+    reasoning_content: Optional[str] = None  # 用于支持 thinking 模式的模型
+
+    def to_dict(self) -> Dict[str, Any]:
+        result = {
             "role": self.role.value,
             "content": self.content,
         }
+        # 如果存在 reasoning_content，添加到字典中（某些模型需要）
+        if self.reasoning_content is not None:
+            result["reasoning_content"] = self.reasoning_content
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Message":
+        """从字典创建消息"""
+        role = MessageRole(data.get("role", "user"))
+        content = data.get("content", "")
+        reasoning_content = data.get("reasoning_content")
+        return cls(
+            role=role,
+            content=content,
+            reasoning_content=reasoning_content,
+            metadata=data.get("metadata", {})
+        )
     
     @classmethod
     def system(cls, content: str) -> "Message":
@@ -53,6 +72,8 @@ class LLMResponse:
     usage: Dict[str, int] = field(default_factory=dict)
     latency_ms: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
+    reasoning_content: Optional[str] = None  # 支持 thinking 模式的推理内容
+    tool_calls: Optional[List[Dict[str, Any]]] = None  # 工具调用
     
     @property
     def input_tokens(self) -> int:
@@ -178,14 +199,41 @@ class OpenAIProvider(BaseLLMProvider):
             )
             
             for chunk in stream:
-                if chunk.choices and len(chunk.choices) > 0:
-                    delta = chunk.choices[0].delta
-                    if delta and delta.content:
-                        yield delta.content
+                # 处理空choices的情况
+                if not chunk.choices:
+                    continue
+                # 安全地获取delta.content
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield delta.content
                     
         except ImportError:
             raise ImportError("请先安装 openai: pip install openai")
         except Exception as e:
+            error_msg = str(e)
+            if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+                raise LLMError(
+                    f"LLM API 连接超时 ({self.config.timeout}秒)。\n"
+                    f"请检查:\n"
+                    f"1. API 地址是否正确: {self.config.api_base}\n"
+                    f"2. 网络连接是否正常\n"
+                    f"3. 如果使用内网地址，请确认 VPN 或网络环境"
+                )
+            # DeepSeek thinking 模式错误处理
+            if "reasoning_content" in error_msg.lower() or "thinking" in error_msg.lower():
+                # 降级到非流式调用
+                try:
+                    response = client.chat.completions.create(
+                        model=self.config.model,
+                        messages=[m.to_dict() for m in messages],
+                        temperature=self.config.temperature,
+                        max_tokens=self.config.max_tokens,
+                        stream=False,
+                        **kwargs
+                    )
+                    yield response.choices[0].message.content
+                except Exception as retry_e:
+                    raise LLMError(f"流式调用失败，非流式重试也失败: {retry_e}")
             raise LLMError(f"OpenAI API 流式调用失败: {e}")
 
 
