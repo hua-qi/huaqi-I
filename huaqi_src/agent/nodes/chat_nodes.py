@@ -6,14 +6,18 @@
 
 import re
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 from ..state import AgentState, INTENT_CHAT, INTENT_DIARY, INTENT_SKILL, INTENT_CONTENT, INTENT_UNKNOWN
 from ...core.adaptive_understanding import get_adaptive_understanding
 from ...core.llm import get_llm_manager
 from ...core.user_profile import get_profile_manager
+
+logger = logging.getLogger(__name__)
 
 # 缓存上次的分析结果
 _user_last_result: Optional[Any] = None
@@ -150,7 +154,6 @@ def extract_user_info(state: AgentState) -> Dict[str, Any]:
     """
     messages = state.get("messages", [])
 
-    # 获取最后一条用户消息
     last_message = ""
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
@@ -161,8 +164,15 @@ def extract_user_info(state: AgentState) -> Dict[str, Any]:
         return {}
 
     try:
+        from ...cli.context import build_llm_manager, ensure_initialized
+        ensure_initialized()
+        llm_mgr = build_llm_manager(temperature=0.3, max_tokens=500)
+
         profile_manager = get_profile_manager()
-        extracted = profile_manager.extract_from_message(last_message)
+        if llm_mgr is not None:
+            extracted = profile_manager.extract_from_message(last_message, llm_manager=llm_mgr)
+        else:
+            extracted = profile_manager.extract_from_message(last_message)
 
         if extracted:
             return {"user_info_extracted": extracted}
@@ -236,10 +246,9 @@ def retrieve_memories(state: AgentState) -> Dict[str, Any]:
         return {"recent_memories": []}
     
     try:
-        # 使用混合检索获取相关记忆
         from ...memory.vector import get_hybrid_search
         
-        search = get_hybrid_search(use_vector=False, use_bm25=True)
+        search = get_hybrid_search(use_vector=True, use_bm25=True)
         results = search.search(query, top_k=3)
         
         memories = []
@@ -251,48 +260,64 @@ def retrieve_memories(state: AgentState) -> Dict[str, Any]:
         return {"recent_memories": memories}
         
     except Exception as e:
-        # 检索失败不影响主流程
+        logger.debug(f"记忆检索失败: {e}")
         return {"recent_memories": []}
 
 
-def generate_response(state: AgentState, llm_client=None) -> Dict[str, Any]:
+async def generate_response(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """生成回复节点
-    
+
     调用 LLM 生成回复
     """
     messages = state.get("messages", [])
     workflow_data = state.get("workflow_data", {})
     memories = state.get("recent_memories", [])
-    
-    # 构建消息列表
+
     system_prompt = workflow_data.get("system_prompt", build_system_prompt())
-    
-    # 添加记忆上下文
+
     if memories:
         memory_text = "\n\n相关记忆：\n" + "\n".join([f"- {m}" for m in memories])
         system_prompt += memory_text
-    
-    # 构建完整消息列表
+
     full_messages = [SystemMessage(content=system_prompt)] + messages
-    
+
     try:
-        # 调用 LLM
-        if llm_client is None:
-            # 使用默认 LLM
-            from ...core.llm import LLMManager
-            llm = LLMManager()
-            response = llm.chat(full_messages)
-        else:
-            response = llm_client.chat(full_messages)
+        from ...cli.context import build_llm_manager, ensure_initialized
+        ensure_initialized()
+        llm_mgr = build_llm_manager(temperature=0.7, max_tokens=1500)
+        if llm_mgr is None:
+            raise RuntimeError("未配置任何 LLM 提供商")
+
+        active_name = llm_mgr.get_active_provider()
+        if not active_name:
+            raise RuntimeError("未配置任何 LLM 提供商")
+        cfg = llm_mgr._configs[active_name]
+
+        from langchain_openai import ChatOpenAI
+        chat_model = ChatOpenAI(
+            model=cfg.model,
+            api_key=cfg.api_key,
+            base_url=cfg.api_base or None,
+            temperature=1,
+            max_tokens=cfg.max_tokens,
+            streaming=True,
+        )
         
-        # 提取回复内容
-        content = response
-        if hasattr(response, 'content'):
-            content = response.content
+        from ..tools import search_diary_tool
+        tools = [search_diary_tool]
+        chat_model_with_tools = chat_model.bind_tools(tools)
+
+        response_msg = None
+        # 使用 astream 强制流式输出，遍历的同时 LangGraph / Langchain 会自动向上发出 on_chat_model_stream 事件
+        async for chunk in chat_model_with_tools.astream(full_messages, config=config):
+            if response_msg is None:
+                response_msg = chunk
+            else:
+                response_msg += chunk
         
         return {
-            "response": content,
-            "messages": [AIMessage(content=content)],
+            "response": response_msg.content,
+            "messages": [response_msg],
         }
         
     except Exception as e:
@@ -305,10 +330,76 @@ def generate_response(state: AgentState, llm_client=None) -> Dict[str, Any]:
 
 
 def save_conversation(state: AgentState) -> Dict[str, Any]:
-    """保存对话节点"""
-    # 这里可以实现对话历史持久化
-    # 暂时不做实际存储
+    """保存对话节点：Markdown 存档 + Chroma 向量索引"""
+    messages = state.get("messages", [])
+    response = state.get("response", "")
+
+    if not response:
+        return {}
+
+    turns = []
+    user_msg = ""
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            user_msg = msg.content
+        elif isinstance(msg, AIMessage) and user_msg:
+            turns.append({"user_message": user_msg, "assistant_response": msg.content})
+            user_msg = ""
+
+    if not turns:
+        return {}
+
+    try:
+        from datetime import datetime as dt
+        from ...core.config_paths import get_memory_dir
+        from ...memory.storage.markdown_store import MarkdownMemoryStore
+
+        now = dt.now()
+        session_id = state.get("workflow_data", {}).get("thread_id", now.strftime("%Y%m%d_%H%M%S"))
+
+        memory_store = MarkdownMemoryStore(get_memory_dir() / "conversations")
+        filepath = memory_store.save_conversation(
+            session_id=session_id,
+            timestamp=now,
+            turns=turns,
+            metadata={"intent": state.get("intent", "chat"), "turns": len(turns)},
+        )
+
+        _index_to_chroma(session_id, turns, now)
+
+    except Exception:
+        pass
+
     return {}
+
+
+def _index_to_chroma(session_id: str, turns: List[Dict[str, Any]], timestamp) -> None:
+    """将对话轮次写入 Chroma 向量库"""
+    try:
+        from ...memory.vector import get_chroma_client, get_embedding_service
+
+        chroma = get_chroma_client()
+        embedder = get_embedding_service()
+
+        for i, turn in enumerate(turns):
+            content = f"用户：{turn['user_message']}\nHuaqi：{turn['assistant_response']}"
+            doc_id = f"{session_id}_turn_{i}"
+
+            embedding = embedder.encode(content)
+
+            chroma.add(
+                doc_id=doc_id,
+                content=content,
+                metadata={
+                    "session_id": session_id,
+                    "turn_index": i,
+                    "date": timestamp.strftime("%Y-%m-%d"),
+                    "type": "conversation",
+                },
+                embedding=embedding.tolist() if hasattr(embedding, "tolist") else list(embedding),
+            )
+    except Exception:
+        pass
 
 
 def handle_error(state: AgentState) -> Dict[str, Any]:
