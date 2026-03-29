@@ -12,10 +12,65 @@ from huaqi_src.cli.context import console, ensure_initialized
 system_app = typer.Typer(name="system", help="系统管理")
 
 
+@system_app.command("webhook")
+def webhook_server(
+    host: str = typer.Option("127.0.0.1", "--host", help="监听地址"),
+    port: int = typer.Option(8080, "--port", help="监听端口"),
+):
+    """启动外部事件(如微信)的 Webhook 监听服务器"""
+    ensure_initialized()
+    from huaqi_src.integrations.wechat_webhook import run_server
+    from huaqi_src.core.config_manager import ConfigManager
+    import sys
+    
+    config = ConfigManager()
+    console.print(f"\n[bold green]🚀 启动 Webhook 接收服务器 ({host}:{port})[/bold green]")
+    if not config.is_enabled("wechat"):
+        console.print("[yellow]⚠️ 警告：当前微信采集模块未开启，收到的消息将被拒绝。[/yellow]")
+        console.print("[dim]提示：可通过 'huaqi config set modules.wechat true' 开启。[/dim]")
+    console.print("\n[dim]测试命令: curl -X POST http://127.0.0.1:8080/api/webhook/wechat -d '{\"actor\": \"张三\", \"content\": \"你好呀\"}'[/dim]")
+    console.print("[dim]使用 Ctrl+C 停止服务器...[/dim]\n")
+    
+    try:
+        run_server(host=host, port=port)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Webhook 服务器已关闭。[/dim]")
+
 @system_app.callback(invoke_without_command=True)
 def system_callback(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
+
+
+@system_app.command("show")
+def system_show():
+    """显示系统状态"""
+    import huaqi_src.cli.context as ctx
+    ensure_initialized()
+
+    console.print("\n[bold cyan]🔧 系统状态[/bold cyan]\n")
+
+    console.print(f"  数据目录: [cyan]{ctx.DATA_DIR}[/cyan]")
+
+    memory_dir = ctx.DATA_DIR / "memory"
+    memory_count = len(list(memory_dir.glob("*.md"))) if memory_dir.exists() else 0
+    console.print(f"  记忆文件: [cyan]{memory_count}[/cyan] 条")
+
+    if ctx._git is not None:
+        git_status = ctx._git.get_status()
+        if git_status.get("initialized"):
+            remote_url = git_status.get("remote_url") or "(未配置)"
+            branch = git_status.get("branch") or "main"
+            auto_push = "开启" if git_status.get("auto_push") else "关闭"
+            console.print(f"  Git 远程: [cyan]{remote_url}[/cyan]")
+            console.print(f"  Git 分支: [cyan]{branch}[/cyan]")
+            console.print(f"  自动推送: [cyan]{auto_push}[/cyan]")
+        else:
+            console.print("  Git: [dim]未初始化[/dim]")
+    else:
+        console.print("  Git: [dim]未初始化[/dim]")
+
+    console.print()
 
 
 @system_app.command("migrate")

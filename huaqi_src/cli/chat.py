@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Union
 
 from rich.markdown import Markdown
-from rich.panel import Panel
 from rich.live import Live
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from huaqi_src.cli.context import (
     console, ensure_initialized,
@@ -24,7 +24,7 @@ from huaqi_src.cli.context import (
 )
 from huaqi_src.cli.ui import prompt_input, clear_screen
 from huaqi_src.core.llm import LLMConfig, Message, LLMManager
-from huaqi_src.core.ui_utils import get_ui, HuaqiTheme
+from huaqi_src.core.ui_utils import get_ui, HuaqiTheme, BubbleLayout
 
 
 def _build_system_prompt(include_diary: bool = True) -> str:
@@ -678,19 +678,27 @@ def _show_goals_list():
         console.print(f"   创建: {goal.created_at[:10] if goal.created_at else '未知'}\n")
 
 
-def run_langgraph_chat():
+def run_langgraph_chat(thread_id: str = None):
     """运行 LangGraph Agent 对话模式"""
     try:
-        from huaqi_src.agent import ChatAgent
+        from huaqi_src.agent import ChatAgent, load_sessions
+        from rich.live import Live
+        from rich.markdown import Markdown
 
-        console.print("\n[bold magenta]🌸 Huaqi Agent[/bold magenta] - 智能 AI 同伴")
-        console.print("[dim]使用 LangGraph Agent 架构 | 输入 /help 查看命令, exit 退出对话[/dim]\n")
+        bubble = BubbleLayout(console)
+        bubble.render_welcome()
 
-        agent = ChatAgent()
+        if thread_id:
+            agent = ChatAgent(thread_id=thread_id)
+            console.print(f"[dim]已恢复会话 {thread_id[:8]}...[/dim]\n")
+        else:
+            agent = ChatAgent()
+
+        turn_count = 0
 
         while True:
             try:
-                user_input = prompt_input().strip()
+                user_input = prompt_input(turn_count=turn_count, left_pad=bubble.left_pad()).strip()
                 if not user_input:
                     continue
 
@@ -700,15 +708,11 @@ def run_langgraph_chat():
 
                 if user_input == "/help":
                     console.print("\n[bold cyan]📚 可用命令[/bold cyan]")
-                    console.print("  /reset - 重置会话")
+                    console.print("  /reset - 新建会话")
                     console.print("  /state - 查看当前状态")
                     console.print("  /clear - 清屏")
-                    console.print("  /help - 显示帮助")
-                    console.print("  exit/quit - 退出对话")
-                    console.print("\n[bold]快捷键:[/bold]")
-                    console.print("  ↑/↓ 历史记录  •  Tab 自动补全  •  Ctrl+R 搜索历史")
-                    console.print("  Ctrl+L 清屏  •  Ctrl+C 取消输入")
-                    console.print("  Ctrl+O 或 Esc+Enter 换行  •  Enter 提交\n")
+                    console.print("  /help  - 显示帮助")
+                    console.print("  exit/quit - 退出对话\n")
                     continue
 
                 if user_input == "/clear":
@@ -716,17 +720,54 @@ def run_langgraph_chat():
                     continue
 
                 if user_input == "/reset":
-                    agent = ChatAgent()
-                    console.print("[dim]会话已重置[/dim]\n")
+                    agent.reset()
+                    console.print("[dim]已新建会话[/dim]\n")
+                    turn_count = 0
                     continue
 
                 if user_input == "/state":
                     state = agent.get_state()
-                    console.print(f"\n[dim]当前状态: {state.get('current_node', 'unknown')}[/dim]\n")
+                    console.print(f"\n[dim]会话 {state['thread_id'][:8]}... | 第 {state['turn_count']} 轮[/dim]\n")
                     continue
 
-                response = agent.run(user_input)
-                console.print(f"\n[bold magenta]🌸 Huaqi[/bold magenta]: {response}\n")
+                timestamp = datetime.now().strftime("%H:%M")
+                bubble.render_user_message(user_input, timestamp)
+
+                bubble.render_ai_prefix(timestamp)
+
+                full_response = []
+                with Live(console=console, refresh_per_second=30, transient=True) as live:
+                    live.update("[dim]·  ·  ·[/dim]")
+                    for chunk in agent.stream(user_input):
+                        full_response.append(chunk)
+                        live.update(Markdown("".join(full_response), style="bright_yellow"))
+
+                response_text = "".join(full_response)
+                if response_text:
+                    console.print(Markdown(response_text, style="bright_yellow"))
+                console.print()
+                turn_count += 1
+
+                # 将 CLI 交互记录写入 SQLite
+                try:
+                    from huaqi_src.core.db_storage import LocalDBStorage
+                    from huaqi_src.core.event import Event
+                    import time
+                    db = LocalDBStorage()
+                    db.insert_event(Event(
+                        timestamp=int(time.time()),
+                        source="cli",
+                        actor="User",
+                        content=user_input
+                    ))
+                    db.insert_event(Event(
+                        timestamp=int(time.time()),
+                        source="cli",
+                        actor="AI",
+                        content=response_text
+                    ))
+                except Exception as e:
+                    console.print(f"[dim red]保存交互事件失败: {e}[/dim red]")
 
             except KeyboardInterrupt:
                 console.print("\n\n[dim]已中断[/dim]\n")
@@ -747,18 +788,46 @@ def chat_mode():
 
     ensure_initialized()
 
-    console.print("\n[bold magenta]🌸 Huaqi[/bold magenta] - 个人 AI 同伴")
-    console.print("[dim]输入 /help 查看命令, exit 退出对话[/dim]\n")
+    bubble = BubbleLayout(console)
+
+    conversations = ctx._memory_store.list_conversations(limit=100) if ctx._memory_store else []
+    conversation_count = len(conversations)
+    last_chat = None
+    if conversations:
+        last_ts = conversations[0].get("created_at", "")[:10]
+        today = datetime.now().strftime("%Y-%m-%d")
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        if last_ts == today:
+            last_chat = "今天"
+        elif last_ts == yesterday:
+            last_chat = "昨天"
+        elif last_ts:
+            last_chat = last_ts
+
+    has_report = False
+    pending_report_text = None
+    try:
+        from huaqi_src.core.pattern_learning import get_pattern_engine
+        pattern_engine = get_pattern_engine()
+        latest_report = pattern_engine.get_latest_weekly_report()
+        now = datetime.now()
+        current_week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+        if not latest_report or latest_report.week_start != current_week_start:
+            report = pattern_engine.generate_weekly_report()
+            if report:
+                has_report = True
+        elif latest_report:
+            has_report = True
+    except Exception:
+        pass
 
     try:
         from huaqi_src.core.user_profile import get_data_extractor
         extractor = get_data_extractor()
-
         if not extractor.is_extracting() and extractor.get_result() is None:
             _llm_for_extraction = LLMManager()
             config = ctx._config.load_config()
             provider_name = config.llm_default_provider
-
             if provider_name in config.llm_providers:
                 provider_config = config.llm_providers[provider_name]
                 api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
@@ -774,41 +843,33 @@ def chat_mode():
                 _llm_for_extraction.add_config(llm_config)
                 _llm_for_extraction.set_active(provider_config.name)
                 extractor.start_extraction(_llm_for_extraction)
-                console.print("[dim]💡 正在分析你的日记和对话...[/dim]\n")
     except Exception:
         pass
 
+    pending_care = None
     try:
         from huaqi_src.core.proactive_care import get_care_engine
         care_engine = get_care_engine()
         care_record = care_engine.check_and_trigger()
         if care_record:
-            console.print(f"\n[bold magenta]🌸 Huaqi[/bold magenta]: {care_record.care_content}\n")
-            console.print("[dim]（这是基于你最近状态的关怀，回复 /care feedback helpful/annoying 告诉我是否有用）[/dim]\n")
+            pending_care = care_record.care_content
     except Exception:
         pass
 
-    try:
-        from huaqi_src.core.pattern_learning import get_pattern_engine
-        pattern_engine = get_pattern_engine()
-        latest_report = pattern_engine.get_latest_weekly_report()
-        now = datetime.now()
-        current_week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
-        if not latest_report or latest_report.week_start != current_week_start:
-            report = pattern_engine.generate_weekly_report()
-            if report:
-                console.print("\n" + pattern_engine.format_weekly_report(report) + "\n")
-    except Exception:
-        pass
+    bubble.render_welcome(
+        conversation_count=conversation_count,
+        last_chat=last_chat,
+        has_report=has_report,
+    )
 
     system_prompt = _build_system_prompt()
-    conversation_history: List[Dict[str, str]] = []
-    last_message_time = datetime.now()
+    conversation_history: List[Dict[str, str]] = [{}]
+    turn_count = 0
+    care_shown = False
 
     while True:
         try:
-            user_input = prompt_input().strip()
-            current_time = datetime.now()
+            user_input = prompt_input(turn_count=turn_count, left_pad=bubble.left_pad()).strip()
 
             if not user_input:
                 continue
@@ -817,13 +878,23 @@ def chat_mode():
                 if conversation_history:
                     from datetime import datetime as dt
                     session_id = dt.now().strftime("%Y%m%d_%H%M%S")
-                    turns = [{"user_message": t["user"], "assistant_response": t["assistant"]} for t in conversation_history]
-                    ctx._memory_store.save_conversation(
-                        session_id=session_id,
-                        timestamp=dt.now(),
-                        turns=turns,
-                        metadata={"type": "chat_session", "turns": len(turns)}
-                    )
+                    valid_turns = [t for t in conversation_history if t.get("user") and t.get("assistant")]
+                    if valid_turns:
+                        turns = [{"user_message": t["user"], "assistant_response": t["assistant"]} for t in valid_turns]
+                        ctx._memory_store.save_conversation(
+                            session_id=session_id,
+                            timestamp=dt.now(),
+                            turns=turns,
+                            metadata={"type": "chat_session", "turns": len(turns)}
+                        )
+                        if hasattr(ctx, "_git") and ctx._git is not None:
+                            result = ctx._git.commit_memory_change(session_id)
+                            if result.pushed:
+                                console.print("[dim]☁️ 已同步到远端[/dim]")
+                            elif result.committed and not result.has_remote:
+                                console.print("[dim]💾 已本地保存（未配置远端）[/dim]")
+                            elif result.committed and result.has_remote and not result.pushed:
+                                console.print(f"[dim]⚠️ 本地已保存，推送失败: {result.error}[/dim]")
                 console.print("\n[dim]👋 再见！期待下次与你交流。[/dim]\n")
                 break
 
@@ -843,43 +914,32 @@ def chat_mode():
                     continue
 
             timestamp = datetime.now().strftime("%H:%M")
-            steps = []
 
-            def _create_status_panel():
-                content = "\n".join(steps) if steps else ""
-                return Panel(
-                    content,
-                    title=f"[bold magenta]🌸 Huaqi[/bold magenta] [dim]{timestamp}[/dim]",
-                    title_align="left",
-                    border_style="magenta",
-                    padding=(0, 1),
-                )
+            bubble.render_user_message(user_input, timestamp)
 
-            with Live(_create_status_panel(), console=console, refresh_per_second=10, transient=False) as live:
-                steps.append("[dim]正在思考...[/dim]")
-                live.update(_create_status_panel())
+            if not care_shown and pending_care:
+                bubble.render_care_message(pending_care)
+                care_shown = True
 
-                full_response = []
-                for chunk in _generate_streaming_response(user_input, conversation_history, system_prompt):
+            bubble.render_ai_prefix(timestamp)
+
+            full_response = []
+            with Live(console=console, refresh_per_second=30, transient=True) as live:
+                live.update("[dim]·  ·  ·[/dim]")
+                for chunk in _generate_streaming_response(user_input, [t for t in conversation_history if t.get("user")], system_prompt):
                     full_response.append(chunk)
-                    response_text = "".join(full_response)
-                    steps[-1] = "[dim]2. 调用 LLM 中... ✨[/dim]"
-                    live.update(Panel(
-                        Markdown(response_text),
-                        title=f"[bold magenta]🌸 Huaqi[/bold magenta] [dim]{timestamp}[/dim]",
-                        title_align="left",
-                        border_style="magenta",
-                        padding=(0, 1),
-                    ))
+                    live.update(Markdown("".join(full_response), style="bright_yellow"))
 
+            response_text = "".join(full_response)
+            if response_text:
+                console.print(Markdown(response_text, style="bright_yellow"))
             console.print()
-            console.print()
+
+            turn_count += 1
 
             conversation_history.append({"user": user_input, "assistant": response_text})
-            if len(conversation_history) > 10:
+            if len(conversation_history) > 11:
                 conversation_history = conversation_history[-10:]
-
-            last_message_time = current_time
 
         except KeyboardInterrupt:
             console.print("\n\n[dim]已中断对话[/dim]\n")
