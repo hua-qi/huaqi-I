@@ -6,7 +6,47 @@
 
 ## [Unreleased]
 
+### Fixed
+- 修复 LangGraph Agent 模式下对话没有流式输出的问题：通过传递 `RunnableConfig` 并在底层节点明确使用 `astream` 遍历抛出流式事件
+- 修复终端 UI 中用户输入被重复渲染的问题：在 prompt 返回后使用 ANSI 转义序列清屏而不关闭 `prompt_toolkit` 回显
+- 修复 AI 回复内容颜色与 AI 名称颜色区分度不高的问题：改为 `bright_yellow`，且正确处理 Markdown 实时流式渲染
+- 修复收到流式响应前没有 Loading 动画的问题：加入 `[dim]·  ·  ·[/dim]` 呼吸占位动画
+
+### Added
+- Agent 记忆检索：新增 `search_diary_tool` 并通过 `bind_tools` 绑定至 LangGraph LLM 节点，支持流式输出的同时自动路由工具调用，解决意图识别的“记忆断层”问题
+- LangGraph Agent 模式成为默认对话入口（`huaqi` / `huaqi chat`）
+- `ChatAgent` 类：流式输出（threading + Queue 桥接 async generator）、会话新建/恢复
+- `AsyncSqliteSaver` checkpoint 持久化：会话上下文保存到 `{DATA_DIR}/checkpoints.db`，重启可恢复
+- `huaqi chat -l` 列出历史会话，`-s <thread_id>` 恢复指定会话
+- `analyze_user_understanding` 节点：情绪/能量/焦虑/动机维度分析
+- `save_conversation` 节点：Markdown + Chroma 双写入（对话存档 + 向量索引）
+- `memory_retriever` 激活 Embedding 向量检索（`bge-small-zh` + BM25 混合）
+- 新增 `docs/features/langgraph-agent.md` LangGraph Agent 功能文档
+- 新增 `spec/decisions/ADR-004-langgraph-default-mode.md` 架构决策记录
+- 新增 `spec/decisions/ADR-003-memory-retrieval-strategy.md` 记忆检索策略决策
+- 新增 `docs/design/memory-retrieval-strategy.md` 记忆检索方案分析文档
+- 新增 `BubbleLayout` 类（`huaqi_src/core/ui_utils.py`）：无边框气泡对话布局，支持 60% 宽度居中、左右分列显示
+
 ### Changed
+- `generate_response` 节点改用 `ChatOpenAI(streaming=True)` + `async def`，支持 `astream_events` 事件追踪
+- `huaqi`（无子命令）从传统模式改为走 LangGraph 模式
+- `pyproject.toml` 新增 `langgraph-checkpoint-sqlite` 和 `aiosqlite>=0.17.0,<0.20` 依赖
+- CLI 对话界面全面重设计：去除所有 Panel 边框，采用无边框气泡布局
+- AI 回复：`🌸 HH:MM` 前缀 + Markdown 正文，左对齐，右边界锁定在内容列
+- 用户消息：右对齐纯文本，使用 `rich.cells.cell_len` 正确处理中文双宽字符对齐
+- 启动流程：关怀消息延迟至第一轮回复后展示，周报静默后台生成，分析提示完全移除
+- 输入提示符动态显示对话轮数：`🌸 huaqi [N] >`
+- 移除每轮对话分隔线
+
+### Changed
+- CLI 命令统一简化：所有子命令组均收敛为 `show` + `set` 两个标准子命令
+- `config list` 重命名为 `config show`
+- `profile` 删除 `refresh`、`forget` 子命令，保留 `show`、`set`
+- `personality` 删除 `update`、`review` 子命令，新增 `set`（提示不支持手动设置）
+- `pipeline`、`system` 各新增 `show` 子命令展示模块状态，操作类子命令保持不变
+- CLI 全局 Options 简化：移除 `--data-dir`、`--install-completion`、`--show-completion`
+- 首次运行未设置数据目录时自动触发引导向导（原 `--data-dir` 功能合并到 `config set data_dir`）
+- `huaqi --help` 命令列表按"配置管理"和"操作工具"两组展示
 - 代码组织重构：`cli.py` 从 2278 行拆分为 `huaqi_src/cli/` 包（`ui.py` / `context.py` / `chat.py` / `commands/`）
 - 代码组织重构：`user_profile.py` 从 1097 行拆分为 `profile_models.py` / `profile_manager.py` / `profile_narrative.py` / `profile_extractor.py`
 - `user_profile.py` 保留为向后兼容的 re-export 入口，所有现有导入无需修改
