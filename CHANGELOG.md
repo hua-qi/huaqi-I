@@ -22,6 +22,7 @@
 - `save_conversation` 节点：Markdown + Chroma 双写入（对话存档 + 向量索引）
 - `memory_retriever` 激活 Embedding 向量检索（`bge-small-zh` + BM25 混合）
 - 新增 `docs/features/langgraph-agent.md` LangGraph Agent 功能文档
+- 新增 `docs/features/conversation-context.md` 对话上下文机制文档
 - 新增 `spec/decisions/ADR-004-langgraph-default-mode.md` 架构决策记录
 - 新增 `spec/decisions/ADR-003-memory-retrieval-strategy.md` 记忆检索策略决策
 - 新增 `docs/design/memory-retrieval-strategy.md` 记忆检索方案分析文档
