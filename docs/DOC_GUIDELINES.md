@@ -18,7 +18,8 @@ huaqi-growing/
 │   │   ├── ARCHITECTURE.md          # 系统架构（权威版本）
 │   │   ├── PRD.md                   # 产品需求文档
 │   │   ├── SPEC.md                  # 功能规范
-│   │   └── TECH_SPEC.md             # 技术方案
+│   │   ├── TECH_SPEC.md             # 技术方案
+│   │   └── memory-retrieval-strategy.md  # 记忆检索策略分析
 │   ├── features/                    # 各功能模块文档
 │   │   ├── user-profile/
 │   │   │   ├── extraction.md        # 用户画像提取
@@ -26,7 +27,8 @@ huaqi-growing/
 │   │   ├── proactive-care/
 │   │   │   ├── design.md            # 主动关怀设计
 │   │   │   └── impl.md              # 主动关怀实现
-│   │   └── pattern-learning.md      # 模式学习
+│   │   ├── pattern-learning.md      # 模式学习
+│   │   └── langgraph-agent.md       # LangGraph Agent 对话系统
 │   ├── guides/                      # 用户与开发者指南
 │   │   ├── code-organization.md     # 代码及文件组织规范（供 agent 参考）
 │   │   ├── cli-guide.md             # CLI 命令完整参考
@@ -41,7 +43,9 @@ huaqi-growing/
     ├── decisions/                   # 架构决策记录 (ADR)
     │   ├── ADR-000-project-origins.md
     │   ├── ADR-001-initial-design.md
-    │   └── ADR-002-code-organization-refactor.md
+    │   ├── ADR-002-code-organization-refactor.md
+    │   ├── ADR-003-memory-retrieval-strategy.md
+    │   └── ADR-004-langgraph-default-mode.md
     ├── roadmap/
     │   └── ROADMAP.md               # 项目路线图
     ├── IMPORT_GUIDE.md

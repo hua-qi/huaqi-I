@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### Added
+- 核心引擎：新增 `ConfigManager` 以支持默认关闭（Opt-in）的系统模块开关配置（网络代理、微信拦截等）。
+- 核心引擎：新增带正则自动脱敏机制的统一 `Event` 数据结构。
+- 核心引擎：新增基于 SQLite 的 `LocalDBStorage`，用于持久化存储微信和 CLI 的系统交互事件，数据文件自动落盘到系统统一定义的数据目录。
+- Agent 模块：新增 `search_events_tool`，允许大模型在回答时通过 Tool Calling 自主检索本地 SQLite 中保存的交互事件历史。
+- CLI：`huaqi config show` / `huaqi config set` 现支持查看和修改模块开关配置（如 `modules.network_proxy`, `modules.wechat`），并支持将内联值转换为 Boolean 类型落盘持久化。
+
+### Changed
+- CLI：修改了 `huaqi config set` 命令签名，现在支持在同一行直接传入目标值（例如 `huaqi config set modules.wechat true`），如果未传参则回退为 Prompt 询问。
+- 核心存储：修复底层 `LocalDBStorage` 初始化路径，从硬编码的当前目录改为使用系统规范的 `~/.huaqi/events.db` 路径（遵循全局数据目录配置）。
+
+### Fixed
+- CLI：修复了执行 `huaqi config set <key> <value>` 时抛出的 `Got unexpected extra argument` Typer 报错问题。
+
 ### Fixed
 - 修复 LangGraph Agent 模式下对话没有流式输出的问题：通过传递 `RunnableConfig` 并在底层节点明确使用 `astream` 遍历抛出流式事件
 - 修复终端 UI 中用户输入被重复渲染的问题：在 prompt 返回后使用 ANSI 转义序列清屏而不关闭 `prompt_toolkit` 回显

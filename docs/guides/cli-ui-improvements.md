@@ -2,6 +2,8 @@
 
 本文档记录 Huaqi CLI 的 UI 交互优化改进，提升用户使用体验。
 
+---
+
 ## 优化内容概览
 
 | 功能 | 状态 | 说明 |
@@ -12,6 +14,9 @@
 | 文本补全 | ✅ 已完成 | 从历史中学习中文词组 |
 | 多行输入 | ✅ 已完成 | Ctrl+O 或 Esc+Enter 换行 |
 | 快捷键支持 | ✅ 已完成 | Ctrl+L 清屏、Ctrl+R 搜索历史 |
+| 气泡布局 | ✅ 已完成 | 无边框左右分列、60% 宽度居中 |
+| 动态提示符 | ✅ 已完成 | 提示符显示当前对话轮数 |
+| 启动去噪 | ✅ 已完成 | 关怀延迟、周报静默、分析提示移除 |
 
 ---
 
@@ -27,7 +32,7 @@
 from prompt_toolkit import prompt
 from prompt_toolkit.history import FileHistory
 
-def _prompt_input() -> str:
+def prompt_input() -> str:
     result = prompt(
         "> ",
         history=FileHistory(str(history_file)),
@@ -58,20 +63,6 @@ def _prompt_input() -> str:
 - 文件：`~/.huaqi_history`
 - 格式：纯文本，每条记录一行
 
-### 代码实现
-```python
-from prompt_toolkit.history import FileHistory
-
-_input_history: Optional[FileHistory] = None
-
-def _get_history():
-    global _input_history
-    if _input_history is None:
-        history_file = Path.home() / ".huaqi_history"
-        _input_history = FileHistory(str(history_file))
-    return _input_history
-```
-
 ---
 
 ## 3. Tab 补全功能
@@ -96,43 +87,9 @@ def _get_history():
 补全结果：我叫什么名字
 ```
 
-### 实现原理
-
-```python
-class HuaqiCommandCompleter(Completer):
-    def __init__(self):
-        self._word_cache: Dict[str, int] = {}  # 词频缓存
-
-    def _extract_words_from_history(self, history: FileHistory):
-        """从历史记录中提取中文词组 (2-6字)"""
-        word_pattern = re.compile(r'[\u4e00-\u9fa5]{2,6}')
-        # 提取并统计词频...
-
-    def get_completions(self, document, complete_event):
-        text = document.text_before_cursor
-
-        # 1. 命令补全
-        if text.startswith("/"):
-            # 返回匹配的命令...
-
-        # 2. 中文词组补全
-        # 返回匹配的词组，按频率排序...
-```
-
-### 配置参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| 最小触发长度 | 1 字 | 输入多少字后开始补全 |
-| 词组长度范围 | 2-6 字 | 提取的词组长度范围 |
-| 最大补全数 | 无限制 | 显示的补全选项数量 |
-
 ---
 
 ## 4. 多行输入
-
-### 使用场景
-需要输入长文本、换行内容时使用。
 
 ### 快捷键
 | 按键 | 功能 |
@@ -141,22 +98,110 @@ class HuaqiCommandCompleter(Completer):
 | `Esc + Enter` | 插入换行符 |
 | `Enter` | 提交输入 |
 
-### 代码实现
-```python
-@bindings.add("c-o")
-def _(event):
-    event.current_buffer.insert_text("\n")
+---
 
-@bindings.add("escape", "enter")
-def _(event):
-    event.current_buffer.insert_text("\n")
+## 5. 气泡布局（BubbleLayout）
+
+### 概述
+
+`BubbleLayout`（`huaqi_src/core/ui_utils.py`）实现无边框左右分列气泡布局：
+
+- **内容区宽度**：60% 终端宽度，最小 40 字符
+- **居中方式**：左右留白 = `(terminal_width - content_width) // 2`
+- **AI 消息**：左对齐，`🌸 HH:MM` 前缀 + Markdown 正文
+- **用户消息**：右对齐，`HH:MM  👤 你` 标头 + 白色正文
+- **所有 Panel 边框已移除**
+
+### 布局示意
+
+```
+      │← ─ ─ ─ ─ 60% 终端宽度 ─ ─ ─ →│
+      │                                │
+      │  🌸 14:22                      │
+      │  嗨！很高兴见到你～             │
+      │                                │
+      │              14:23  👤 你      │
+      │              我叫连子蒙        │
+      │                                │
+🌸 huaqi [2] > _
+```
+
+### 中文对齐
+
+用户消息右对齐时使用 `rich.cells.cell_len` 而非 `len()`，正确处理中文双宽字符（每字占 2 列）和 emoji：
+
+```python
+from rich.cells import cell_len
+
+body_pad = max(0, right_edge - cell_len(content))
+console.print(f"{' ' * body_pad}{content}")
+```
+
+### AI 正文右边界约束
+
+AI 的 Markdown 回复通过 `rich.Padding` 同时限制左右边距，防止超出内容列：
+
+```python
+from rich.padding import Padding
+
+rp = max(0, terminal_width - lp - content_width)
+console.print(Padding(Markdown(response_text), pad=(0, rp, 0, lp)))
 ```
 
 ---
 
-## 5. 快捷键总览
+## 6. 动态输入提示符
 
-### 输入相关
+提示符根据当前对话轮数动态变化：
+
+```
+🌸 huaqi >        # 第 0 轮（初始）
+🌸 huaqi [1] >    # 第 1 轮后
+🌸 huaqi [N] >    # 第 N 轮后
+```
+
+`prompt_input()` 接受 `turn_count: int = 0` 参数：
+
+```python
+def prompt_input(turn_count: int = 0, ...) -> str:
+    if turn_count > 0:
+        prompt_message = ANSI(f"\x1b[35m🌸\x1b[0m \x1b[36mhuaqi\x1b[0m \x1b[2m[{turn_count}]\x1b[0m > ")
+    else:
+        prompt_message = ANSI("\x1b[35m🌸\x1b[0m \x1b[36mhuaqi\x1b[0m > ")
+```
+
+---
+
+## 7. 启动流程去噪
+
+### 改动前
+启动时同时输出：分析提示 + 关怀消息 + 周报内容，造成视觉噪音。
+
+### 改动后
+
+| 内容 | 改动前 | 改动后 |
+|------|--------|--------|
+| 分析提示 `💡 正在分析...` | 启动时打印 | 完全移除 |
+| 关怀消息 | 启动时打印 | 延迟至第一轮回复后以 `dim italic` 插入 |
+| 周报 | 启动时全量打印 | 静默生成，欢迎屏仅显示一行提示 `/report 查看` |
+
+### 欢迎屏结构
+
+```
+🌸 Huaqi  ·  你的个人 AI 同伴
+
+今天是周三  ·  共 12 次对话  ·  上次昨天
+「让每一次对话都留下痕迹」
+
+📊 本周报告就绪，/report 查看
+
+──────────────────────────────────────
+```
+
+---
+
+## 8. 快捷键总览
+
 | 快捷键 | 功能 |
 |--------|------|
 | `↑ / ↓` | 浏览历史记录 |
@@ -165,86 +210,41 @@ def _(event):
 | `Ctrl+C` | 取消当前输入 |
 | `Ctrl+O` | 插入换行 |
 | `Esc + Enter` | 插入换行 |
-
-### 界面相关
-| 快捷键 | 功能 |
-|--------|------|
 | `Ctrl+L` | 清屏 |
 
 ---
 
-## 6. 技术栈
+## 9. 相关文件
 
-### 核心依赖
-```toml
-[project.dependencies]
-"prompt-toolkit>=3.0.0"
-"pygments>=2.15.0"
-```
-
-### 关键组件
-- `prompt_toolkit.prompt`: 增强版输入函数
-- `FileHistory`: 历史记录管理
-- `Completer`: 自动补全接口
-- `KeyBindings`: 自定义快捷键
+| 文件 | 说明 |
+|------|------|
+| `huaqi_src/core/ui_utils.py` | `BubbleLayout` 类，宽度计算、气泡渲染、欢迎屏 |
+| `huaqi_src/cli/ui.py` | `prompt_input()`，动态提示符、快捷键绑定 |
+| `huaqi_src/cli/chat.py` | `chat_mode()` / `run_langgraph_chat()`，流式渲染、启动流程 |
 
 ---
 
-## 7. 文件变更
-
-### 修改文件
-- `cli.py`: 重写 `_prompt_input()` 函数，添加补全器和键绑定
-- `pyproject.toml`: 添加 `pygments` 依赖
-
-### 新增文件
-- `~/.huaqi_history`: 用户输入历史记录（自动生成）
-
----
-
-## 8. 故障排除
+## 10. 故障排除
 
 ### 问题：Tab 补全不工作
-**原因：**
-1. 历史记录文件为空，词库尚未建立
-2. 输入内容不在词库中
-
-**解决：**
-- 多输入一些中文内容，建立词库
-- 词库会在每次输入时自动更新
+历史记录文件为空，词库尚未建立。多输入一些中文内容后词库会自动建立。
 
 ### 问题：历史记录丢失
-**原因：**
-- `~/.huaqi_history` 文件被删除或损坏
-
-**解决：**
 ```bash
-# 检查文件是否存在
-ls -la ~/.huaqi_history
-
-# 如损坏可重置
-touch ~/.huaqi_history
+ls -la ~/.huaqi_history   # 检查文件
+touch ~/.huaqi_history    # 如损坏可重置
 ```
 
 ### 问题：中文显示乱码
-**原因：**
-- 终端编码设置不正确
-
-**解决：**
 ```bash
-# 设置 UTF-8 编码
 export LANG=zh_CN.UTF-8
 export LC_ALL=zh_CN.UTF-8
 ```
 
----
-
-## 9. 未来优化方向
-
-- [ ] 模糊搜索：支持拼音首字母搜索历史
-- [ ] 智能提示：基于上下文的输入建议
-- [ ] 语法高亮：代码块的语法着色
-- [ ] 鼠标支持：点击选择补全项
+### 问题：用户消息右对齐偏移
+使用 `rich.cells.cell_len` 替代 `len()` 计算显示宽度，中文字符按 2 列计算。
 
 ---
 
-*最后更新：2025-03-28*
+**文档版本**: v2.0
+**最后更新**: 2026-03-29

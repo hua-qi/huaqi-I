@@ -576,6 +576,35 @@ def get_data_dir() -> Path:
 - ✅ 减少维护成本
 - ✅ 符合个人使用场景
 
+### 5.7 两个目录的区分：源码目录 vs 用户数据目录
+
+Huaqi 运行涉及**两个完全独立的目录**，不可混淆：
+
+| 目录 | 说明 | 示例 |
+|------|------|------|
+| **源码目录** | 代码仓库，由开发者克隆，包含 `huaqi_src/`、`cli.py` 等 | `~/workspace/huaqi-growing/` |
+| **用户数据目录** | 运行时产生的所有用户数据，由用户通过 `--data-dir` 指定，与源码完全分离 | `~/workspace/huaqi/` |
+
+用户数据目录结构：
+
+```
+<DATA_DIR>/              # 用户指定的任意路径，如 ~/workspace/huaqi/
+├── config.yaml          # 用户配置
+├── memory/              # 记忆数据（对话、日记、画像等）
+│   ├── conversations/
+│   ├── diary/
+│   ├── personality.yaml
+│   ├── growth.yaml
+│   └── .huaqi-git.yaml  # Git 同步配置
+├── drafts/              # 内容草稿
+├── vector_db/           # 向量数据库（可再生成，不纳入 Git）
+└── models/              # 本地模型（可再生成，不纳入 Git）
+```
+
+**Git 同步管理的是用户数据目录**（`DATA_DIR`），而非源码目录。`vector_db/` 和 `models/` 因体积大且可再生成，被 `.gitignore` 排除。
+
+> **注意**：用户数据目录下的 `memory/` 是一个独立 git 仓库（有自己的 `.git`）。如果使用 VSCode 等工具打开用户数据目录的**父级目录**，会看到 `memory/` 下的文件显示为 Untracked，这是 git 嵌套仓库的正常现象，不代表数据未被追踪。
+
 ---
 
 ## 六、数据流与关键流程
