@@ -3,16 +3,20 @@
 使用 LangGraph StateGraph 构建的对话流程
 """
 
+from pathlib import Path
 from typing import Dict, Any
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode, tools_condition
 
 from ..state import AgentState, INTENT_CHAT, INTENT_DIARY, INTENT_SKILL, INTENT_UNKNOWN
+from ..tools import search_diary_tool
 from ..nodes.chat_nodes import (
     classify_intent,
     build_context,
     retrieve_memories,
+    analyze_user_understanding,
+    extract_user_info,
     generate_response,
     save_conversation,
     handle_error,
@@ -43,7 +47,16 @@ def build_chat_graph() -> StateGraph:
     # 添加节点
     workflow.add_node("intent_classifier", classify_intent)
     workflow.add_node("context_builder", build_context)
+    workflow.add_node("memory_retriever", retrieve_memories)
+    workflow.add_node("user_analyzer", analyze_user_understanding)
+    workflow.add_node("extract_user_info", extract_user_info)
     workflow.add_node("chat_response", generate_response)
+    
+    # 1. 定义工具节点
+    tools = [search_diary_tool]
+    tool_node = ToolNode(tools)
+    workflow.add_node("tools", tool_node)
+    
     workflow.add_node("save_conversation", save_conversation)
     workflow.add_node("error_handler", handle_error)
     
@@ -52,16 +65,7 @@ def build_chat_graph() -> StateGraph:
     
     # 条件路由: 根据意图选择分支
     def route_by_intent(state: AgentState) -> str:
-        intent = state.get("intent", INTENT_CHAT)
-        
-        # 暂时只支持 chat 意图，其他都路由到 chat
-        # 后续可以实现 diary 和 skill 的专门处理
-        if intent == INTENT_DIARY:
-            return "chat"  # 暂用 chat 处理
-        elif intent == INTENT_SKILL:
-            return "chat"  # 暂用 chat 处理
-        else:
-            return "chat"
+        return "chat"
     
     workflow.add_conditional_edges(
         "intent_classifier",
@@ -72,17 +76,30 @@ def build_chat_graph() -> StateGraph:
     )
     
     # 对话流程
-    workflow.add_edge("context_builder", "chat_response")
-    workflow.add_edge("chat_response", "save_conversation")
-    workflow.add_edge("save_conversation", END)
+    workflow.add_edge("context_builder", "memory_retriever")
+    workflow.add_edge("memory_retriever", "user_analyzer")
+    workflow.add_edge("user_analyzer", "chat_response")
     
-    # 错误处理 (可以从任何节点转到 error_handler)
-    # 这里简化处理，在 generate_response 中处理错误
+    # 条件路由：如果有 tool call 则进入 tools 节点，否则继续原流程
+    workflow.add_conditional_edges(
+        "chat_response",
+        tools_condition,
+        {
+            "tools": "tools",
+            "__end__": "extract_user_info"
+        }
+    )
+    
+    # 工具执行完毕后，回到生成节点重新思考
+    workflow.add_edge("tools", "chat_response")
+    
+    workflow.add_edge("extract_user_info", "save_conversation")
+    workflow.add_edge("save_conversation", END)
     
     return workflow
 
 
-def compile_chat_graph():
+def compile_chat_graph(checkpoints_db_path: Path = None):
     """编译对话工作流
     
     Returns:
@@ -90,8 +107,16 @@ def compile_chat_graph():
     """
     workflow = build_chat_graph()
     
-    # 使用内存 checkpoint (后续可改为持久化)
-    checkpointer = MemorySaver()
+    try:
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        if checkpoints_db_path is None:
+            from ...core.config_paths import require_data_dir
+            checkpoints_db_path = require_data_dir() / "checkpoints.db"
+        checkpoints_db_path.parent.mkdir(parents=True, exist_ok=True)
+        checkpointer = AsyncSqliteSaver.from_conn_string(str(checkpoints_db_path))
+    except ImportError:
+        from langgraph.checkpoint.memory import MemorySaver
+        checkpointer = MemorySaver()
     
     compiled = workflow.compile(checkpointer=checkpointer)
     return compiled
@@ -115,36 +140,20 @@ async def run_chat(
     personality_context: str = None,
     thread_id: str = None,
 ) -> Dict[str, Any]:
-    """运行对话
-    
-    Args:
-        message: 用户消息
-        user_id: 用户ID
-        personality_context: 人格画像上下文
-        thread_id: 对话线程ID
-        
-    Returns:
-        包含回复和状态的结果
-    """
+    """运行对话（非流式，供内部测试使用）"""
     from langchain_core.messages import HumanMessage
     from ..state import create_initial_state
     
-    # 获取图
     graph = get_chat_graph()
     
-    # 创建初始状态
     initial_state = create_initial_state(
         user_id=user_id,
         personality_context=personality_context,
     )
-    
-    # 添加用户消息
     initial_state["messages"] = [HumanMessage(content=message)]
     
-    # 配置 (包含 thread_id 用于持久化)
     config = {"configurable": {"thread_id": thread_id or "default"}}
     
-    # 执行
     result = await graph.ainvoke(initial_state, config=config)
     
     return {
