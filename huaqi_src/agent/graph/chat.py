@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from ..state import AgentState, INTENT_CHAT, INTENT_DIARY, INTENT_SKILL, INTENT_UNKNOWN
-from ..tools import search_diary_tool
+from ..tools import search_diary_tool, search_events_tool
 from ..nodes.chat_nodes import (
     classify_intent,
     build_context,
@@ -21,6 +21,7 @@ from ..nodes.chat_nodes import (
     save_conversation,
     handle_error,
 )
+from ..nodes.interrupt_nodes import require_user_confirmation
 
 
 def build_chat_graph() -> StateGraph:
@@ -52,8 +53,11 @@ def build_chat_graph() -> StateGraph:
     workflow.add_node("extract_user_info", extract_user_info)
     workflow.add_node("chat_response", generate_response)
     
+    # 交互节点
+    workflow.add_node("require_user_confirmation", require_user_confirmation)
+    
     # 1. 定义工具节点
-    tools = [search_diary_tool]
+    tools = [search_diary_tool, search_events_tool]
     tool_node = ToolNode(tools)
     workflow.add_node("tools", tool_node)
     
@@ -80,6 +84,11 @@ def build_chat_graph() -> StateGraph:
     workflow.add_edge("memory_retriever", "user_analyzer")
     workflow.add_edge("user_analyzer", "chat_response")
     
+    def route_by_interrupt(state: AgentState) -> str:
+        if state.get("interrupt_requested"):
+            return "require_user_confirmation"
+        return "save_conversation"
+
     # 条件路由：如果有 tool call 则进入 tools 节点，否则继续原流程
     workflow.add_conditional_edges(
         "chat_response",
@@ -93,7 +102,16 @@ def build_chat_graph() -> StateGraph:
     # 工具执行完毕后，回到生成节点重新思考
     workflow.add_edge("tools", "chat_response")
     
-    workflow.add_edge("extract_user_info", "save_conversation")
+    workflow.add_conditional_edges(
+        "extract_user_info",
+        route_by_interrupt,
+        {
+            "require_user_confirmation": "require_user_confirmation",
+            "save_conversation": "save_conversation"
+        }
+    )
+    
+    workflow.add_edge("require_user_confirmation", "save_conversation")
     workflow.add_edge("save_conversation", END)
     
     return workflow

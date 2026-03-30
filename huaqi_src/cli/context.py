@@ -49,7 +49,7 @@ def ensure_initialized():
     if _personality is None:
         _personality = PersonalityEngine(MEMORY_DIR)
     if _hooks is None:
-        _git = GitAutoCommit(MEMORY_DIR)
+        _git = GitAutoCommit(DATA_DIR)
         _hooks = HookManager(MEMORY_DIR, git_committer=_git)
     if _growth is None:
         _growth = GrowthTracker(MEMORY_DIR, git_committer=_git)

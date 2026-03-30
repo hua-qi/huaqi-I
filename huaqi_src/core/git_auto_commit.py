@@ -21,6 +21,15 @@ class GitRemoteConfig:
     auto_push: bool = True
 
 
+@dataclass
+class CommitResult:
+    """提交结果"""
+    committed: bool = False
+    pushed: bool = False
+    has_remote: bool = False
+    error: str = ""
+
+
 class GitAutoCommit:
     """Git 自动提交和推送管理器
     
@@ -78,10 +87,12 @@ class GitAutoCommit:
         if not self._git_available:
             print("[Git] Git 不可用")
             return False
-        
+
         if self._repo_initialized:
             return True
-        
+
+        self._migrate_memory_subrepo()
+
         try:
             subprocess.run(
                 ["git", "init"],
@@ -89,11 +100,9 @@ class GitAutoCommit:
                 capture_output=True,
                 check=True
             )
-            
-            # 配置用户信息（如果不存在）
+
             self._ensure_git_config()
-            
-            # 创建 .gitignore
+
             gitignore = self.repo_dir / ".gitignore"
             if not gitignore.exists():
                 gitignore.write_text("""# Huaqi Git Ignore
@@ -106,15 +115,32 @@ Thumbs.db
 *.swp
 *.swo
 *~
+vector_db/
+models/
 """)
-            
+            else:
+                content = gitignore.read_text(encoding="utf-8")
+                additions = []
+                for entry in ("vector_db/", "models/"):
+                    if entry not in content:
+                        additions.append(entry)
+                if additions:
+                    gitignore.write_text(content.rstrip() + "\n" + "\n".join(additions) + "\n", encoding="utf-8")
+
             self._repo_initialized = True
-            print(f"[Git] 已初始化仓库: {self.repo_dir}")
             return True
-            
+
         except subprocess.CalledProcessError as e:
             print(f"[Git] 初始化失败: {e}")
             return False
+
+    def _migrate_memory_subrepo(self):
+        """检测并迁移 memory/ 子仓库"""
+        import shutil
+        memory_git = self.repo_dir / "memory" / ".git"
+        if memory_git.exists():
+            shutil.rmtree(memory_git)
+            print("[Git] 已迁移旧 memory/.git，统一由数据目录管理")
     
     def _ensure_git_config(self):
         """确保 git 用户配置存在"""
@@ -233,20 +259,18 @@ Thumbs.db
         
         return None
     
-    def commit(self, message: Optional[str] = None, files: Optional[List[str]] = None) -> bool:
+    def commit(self, message: Optional[str] = None, files: Optional[List[str]] = None) -> CommitResult:
         """执行 git 提交"""
         if not self._git_available:
-            return False
-        
+            return CommitResult()
+
         if not self._repo_initialized:
             if not self.init_repo():
-                return False
-        
+                return CommitResult()
+
         try:
-            # 确保 git 配置
             self._ensure_git_config()
-            
-            # 检查是否有变更
+
             status_result = subprocess.run(
                 ["git", "status", "--porcelain"],
                 cwd=self.repo_dir,
@@ -254,11 +278,10 @@ Thumbs.db
                 text=True,
                 check=True
             )
-            
+
             if not status_result.stdout.strip():
-                return True  # 没有变更
-            
-            # 添加文件
+                return CommitResult()
+
             if files:
                 for file in files:
                     subprocess.run(
@@ -274,65 +297,62 @@ Thumbs.db
                     capture_output=True,
                     check=True
                 )
-            
-            # 提交
+
             if message is None:
                 message = f"Auto commit at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            
+
             subprocess.run(
                 ["git", "commit", "-m", message],
                 cwd=self.repo_dir,
                 capture_output=True,
                 check=True
             )
-            
-            print(f"[Git] ✅ {message}")
-            
-            # 自动推送
+
             if self._remote_config and self._remote_config.auto_push:
-                self.push()
-            
-            return True
-            
+                return self.push()
+
+            has_remote = bool(self.get_remote_url())
+            return CommitResult(committed=True, pushed=False, has_remote=has_remote)
+
         except subprocess.CalledProcessError as e:
-            print(f"[Git] 提交失败: {e}")
-            return False
+            return CommitResult(error=str(e))
     
-    def push(self, remote: Optional[str] = None, branch: Optional[str] = None) -> bool:
+    def push(self, remote: Optional[str] = None, branch: Optional[str] = None) -> CommitResult:
         """推送到远程"""
         if not self._git_available or not self._repo_initialized:
-            return False
-        
+            return CommitResult(committed=True, pushed=False, has_remote=False)
+
         remote = remote or (self._remote_config.name if self._remote_config else "origin")
         branch = branch or (self._remote_config.branch if self._remote_config else "main")
-        
+
+        result = subprocess.run(
+            ["git", "remote", "get-url", remote],
+            cwd=self.repo_dir,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            return CommitResult(committed=True, pushed=False, has_remote=False)
+
         try:
-            # 先检查远程是否存在
-            result = subprocess.run(
-                ["git", "remote", "get-url", remote],
+            subprocess.run(
+                ["git", "pull", "--rebase", remote, branch],
                 cwd=self.repo_dir,
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
-            if result.returncode != 0:
-                print(f"[Git] 远程仓库 {remote} 不存在")
-                return False
-            
-            # 推送
-            subprocess.run(
+            push_result = subprocess.run(
                 ["git", "push", "-u", remote, branch],
                 cwd=self.repo_dir,
                 capture_output=True,
+                text=True,
                 check=True
             )
-            
-            print(f"[Git] 🚀 已推送到 {remote}/{branch}")
-            return True
-            
+            return CommitResult(committed=True, pushed=True, has_remote=True)
         except subprocess.CalledProcessError as e:
-            print(f"[Git] 推送失败: {e}")
-            return False
+            stderr = e.stderr.strip() if e.stderr else str(e)
+            return CommitResult(committed=True, pushed=False, has_remote=True, error=f"repo={self.repo_dir} | {stderr}")
     
     def pull(self, remote: Optional[str] = None, branch: Optional[str] = None) -> bool:
         """从远程拉取"""
@@ -358,42 +378,42 @@ Thumbs.db
     
     # ===== 快捷提交方法 =====
     
-    def commit_personality_change(self, change_type: str = "update") -> bool:
+    def commit_personality_change(self, change_type: str = "update") -> CommitResult:
         """提交个性变更"""
         return self.commit(
             message=f"[Personality] {change_type}",
             files=["personality.yaml"]
         )
-    
-    def commit_hook_change(self, hook_name: str, action: str = "update") -> bool:
+
+    def commit_hook_change(self, hook_name: str, action: str = "update") -> CommitResult:
         """提交 Hook 变更"""
         return self.commit(
             message=f"[Hook] {action}: {hook_name}",
             files=["hooks.yaml"]
         )
-    
-    def commit_skill_change(self, skill_name: str, action: str = "update") -> bool:
+
+    def commit_skill_change(self, skill_name: str, action: str = "update") -> CommitResult:
         """提交技能变更"""
         return self.commit(
             message=f"[Skill] {action}: {skill_name}",
             files=["growth.yaml"]
         )
-    
-    def commit_goal_change(self, goal_title: str, action: str = "update") -> bool:
+
+    def commit_goal_change(self, goal_title: str, action: str = "update") -> CommitResult:
         """提交目标变更"""
         return self.commit(
             message=f"[Goal] {action}: {goal_title}",
             files=["growth.yaml"]
         )
-    
-    def commit_config_change(self) -> bool:
+
+    def commit_config_change(self) -> CommitResult:
         """提交配置变更"""
         return self.commit(
             message=f"[Config] update",
             files=["config.yaml"]
         )
     
-    def commit_memory_change(self, memory_type: str = "general") -> bool:
+    def commit_memory_change(self, memory_type: str = "general") -> CommitResult:
         """提交记忆变更"""
         return self.commit(
             message=f"[Memory] {memory_type} at {datetime.now().strftime('%H:%M')}"

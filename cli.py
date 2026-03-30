@@ -8,7 +8,10 @@ Usage:
 """
 
 import sys
+import warnings
 from pathlib import Path
+
+warnings.filterwarnings("ignore", module="urllib3")
 
 sys.path.insert(0, str(Path(__file__).parent))
 

@@ -68,7 +68,14 @@ response = agent.run("你好")          # 非流式
 
 每个节点执行后自动保存 `AgentState` 快照到 `{DATA_DIR}/checkpoints.db`。同一 `thread_id` 重启后可完整恢复上下文（含完整 messages 历史）。
 
-**关键约束**：必须用 `aiosqlite.connect()` 创建连接，不能用 `from_conn_string()`（后者返回 context manager 不是实例）；`aiosqlite` 版本需锁定 `<0.20`（0.20+ 移除了内部依赖的 `is_alive()` 方法）。
+**关键约束**：在 LangGraph >= 0.2.0 和最新的 langgraph-checkpoint-sqlite 中，**必须**使用 `AsyncSqliteSaver.from_conn_string(str(db_path))` 上下文管理器来初始化 checkpointer，不再支持直接传递 `aiosqlite.connect()` 实例。同时确保 `aiosqlite>=0.20.0`。
+
+### 人机协同与中断恢复 (Human-in-the-loop)
+
+支持在工作流的任意节点通过 `langgraph.types.interrupt` 抛出中断，将控制权交还给用户。
+- 中断后状态会持久化保存在 Checkpointer 中。
+- 用户通过 `huaqi resume <task_id> [response]` 命令恢复执行。
+- 内部通过传递 `Command(resume=response)` 给 `astream_events` 来恢复对应的节点。
 
 ### generate_response 节点
 

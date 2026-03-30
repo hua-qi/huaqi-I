@@ -41,7 +41,7 @@ class SchedulerManager:
             timezone: 时区
         """
         if db_path is None:
-            from .config_paths import get_scheduler_db_path
+            from ..core.config_paths import get_scheduler_db_path
             db_path = get_scheduler_db_path()
         
         self.db_path = db_path
@@ -270,6 +270,28 @@ class SchedulerManager:
     def start(self):
         """启动调度器"""
         if not self.scheduler.running:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No event loop, so run it using asyncio.run
+                import threading
+                
+                def _start_async_scheduler():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                    async def _run_scheduler():
+                        self.scheduler.start()
+                        while True:
+                            await asyncio.sleep(3600)
+                            
+                    loop.run_until_complete(_run_scheduler())
+                    
+                t = threading.Thread(target=_start_async_scheduler, daemon=True)
+                t.start()
+                print(f"[Scheduler] 调度器已启动，时区: {self.timezone}")
+                return
+                
             self.scheduler.start()
             print(f"[Scheduler] 调度器已启动，时区: {self.timezone}")
     

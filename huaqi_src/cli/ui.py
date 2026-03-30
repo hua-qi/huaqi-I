@@ -6,10 +6,11 @@ _clear_screen：清屏
 """
 
 import re
+import sys
 from pathlib import Path
 from typing import Dict, Optional
 
-from prompt_toolkit import prompt
+from prompt_toolkit import PromptSession, prompt
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -118,6 +119,8 @@ def prompt_input(
     history_file: Optional[Path] = None,
     placeholder: str = "今天有什么想聊的？",
     multiline: bool = True,
+    turn_count: int = 0,
+    left_pad: int = 0,
 ) -> str:
     """获取用户输入，支持中文、历史记录、自动补全和多行输入"""
     global _input_history
@@ -150,7 +153,11 @@ def prompt_input(
     def _(event):
         event.current_buffer.insert_text("\n")
 
-    prompt_message = ANSI("\x1b[35m🌸\x1b[0m \x1b[36mhuaqi\x1b[0m > ")
+    pad_str = " " * left_pad
+    if turn_count > 0:
+        prompt_message = ANSI(f"{pad_str}\x1b[35m🌸\x1b[0m \x1b[36mhuaqi\x1b[0m \x1b[2m[{turn_count}]\x1b[0m > ")
+    else:
+        prompt_message = ANSI(f"{pad_str}\x1b[35m🌸\x1b[0m \x1b[36mhuaqi\x1b[0m > ")
 
     try:
         result = prompt(

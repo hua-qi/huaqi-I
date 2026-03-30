@@ -3,6 +3,7 @@
 提供统一的界面组件、主题配置和交互模式
 """
 
+import os
 import random
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -15,6 +16,7 @@ from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.layout import Layout
 from rich.align import Align
+from rich.markdown import Markdown
 from rich import box
 
 
@@ -273,3 +275,100 @@ def get_ui(console: Optional[Console] = None) -> HuaqiUI:
     if _ui_instance is None:
         _ui_instance = HuaqiUI(console)
     return _ui_instance
+
+
+BUBBLE_MAX_WIDTH = 80
+
+
+class BubbleLayout:
+    """全左对齐布局 - 60% 终端宽度居中显示"""
+
+    def __init__(self, console: Optional[Console] = None):
+        self.console = console or Console()
+        self.theme = HuaqiTheme()
+
+    def _terminal_width(self) -> int:
+        try:
+            return os.get_terminal_size().columns
+        except OSError:
+            return 80
+
+    def content_width(self) -> int:
+        tw = self._terminal_width()
+        return max(40, int(tw * 0.6))
+
+    def left_pad(self) -> int:
+        return 0
+
+    def _pad(self) -> str:
+        return ""
+
+    def render_welcome(
+        self,
+        version: str = "",
+        conversation_count: int = 0,
+        last_chat: Optional[str] = None,
+        has_report: bool = False,
+    ):
+        greetings = [
+            "不是使用 AI，而是养育 AI",
+            "让每一次对话都留下痕迹",
+            "你的成长，我都在见证",
+            "今天想聊些什么？",
+            "我在这里，随时可以开始",
+        ]
+        subtitle = random.choice(greetings)
+        cw = self.content_width()
+
+        version_str = f"  ·  v{version}" if version else ""
+        title_line = f"{self.theme.EMOJI_BOT} Huaqi{version_str}  ·  你的个人 AI 同伴"
+
+        meta_parts = []
+        now = datetime.now()
+        weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        meta_parts.append(f"今天是{weekdays[now.weekday()]}")
+        if conversation_count > 0:
+            meta_parts.append(f"共 {conversation_count} 次对话")
+        if last_chat:
+            meta_parts.append(f"上次{last_chat}")
+        meta_line = "  ·  ".join(meta_parts)
+
+        self.console.print()
+        self.console.print(f"[bold magenta]{title_line}[/bold magenta]")
+        self.console.print()
+        if meta_line:
+            self.console.print(f"[dim]{meta_line}[/dim]")
+        self.console.print(f"[dim italic]「{subtitle}」[/dim italic]")
+        self.console.print()
+        if has_report:
+            self.console.print(f"[dim]📊 本周报告就绪，/report 查看[/dim]")
+            self.console.print()
+        self.console.print(f"[dim]{'─' * cw}[/dim]")
+        self.console.print()
+
+    def render_ai_prefix(self, timestamp: Optional[str] = None):
+        ts = timestamp or datetime.now().strftime("%H:%M")
+        self.console.print(f"[bold magenta]{self.theme.EMOJI_BOT} 花期[/bold magenta]  [dim]{ts}[/dim]")
+
+    def render_ai_thinking(self):
+        self.console.print(f"[bold magenta]{self.theme.EMOJI_BOT} 花期[/bold magenta]  [dim]·  ·  ·[/dim]")
+
+    def render_ai_message(self, content: str, timestamp: Optional[str] = None):
+        self.render_ai_prefix(timestamp)
+        lines = content.split("\n")
+        for line in lines:
+            self.console.print(f"[bright_yellow]{line}[/bright_yellow]")
+        self.console.print()
+
+    def render_user_message(self, content: str, timestamp: Optional[str] = None):
+        pass
+        self.console.print()
+
+    def render_divider(self):
+        cw = self.content_width()
+        self.console.print(f"[dim]{'─' * cw}[/dim]")
+        self.console.print()
+
+    def render_care_message(self, content: str):
+        self.console.print(f"[dim italic]{self.theme.EMOJI_BOT} {content}[/dim italic]")
+        self.console.print()

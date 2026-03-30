@@ -132,10 +132,24 @@ huaqi profile set hobbies "阅读,写作"
 
 ```bash
 huaqi personality show             # 查看当前 AI 人格配置（Big Five + 沟通风格）
-huaqi personality set              # 提示：人格画像不支持手动设置
+huaqi personality update           # 主动触发日记分析，生成画像更新提案
+huaqi personality review           # 审核或查看更新提案列表
+huaqi personality review <id> -a   # 批准更新提案
+huaqi personality review <id> -r   # 拒绝更新提案
 ```
 
-> 人格画像由系统基于日记和对话自动演化，不支持手动修改。
+> 人格画像由系统基于日记和对话自动演化，不支持手动全量覆盖。
+
+---
+
+## 人机协同与任务恢复 `resume`
+
+```bash
+huaqi resume <task_id>             # 恢复被中断的 LangGraph 任务（默认确认）
+huaqi resume <task_id> reject      # 拒绝执行被中断的任务
+```
+
+当任务需要人工介入（如发布确认、关键画像更改）时，系统会生成中断任务 ID。
 
 ---
 

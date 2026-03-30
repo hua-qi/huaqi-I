@@ -303,8 +303,8 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
             streaming=True,
         )
         
-        from ..tools import search_diary_tool
-        tools = [search_diary_tool]
+        from ..tools import search_diary_tool, search_events_tool
+        tools = [search_diary_tool, search_events_tool]
         chat_model_with_tools = chat_model.bind_tools(tools)
 
         response_msg = None

@@ -49,6 +49,9 @@ class AppConfig(BaseModel):
     # 自定义设置
     custom: Dict[str, Any] = Field(default_factory=dict)
 
+    # 模块开关
+    modules: Dict[str, bool] = Field(default_factory=dict)
+
 
 class ConfigManager:
     """配置管理器 - 单用户模式

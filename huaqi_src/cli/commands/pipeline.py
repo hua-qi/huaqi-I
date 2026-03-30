@@ -17,6 +17,26 @@ def pipeline_callback(ctx: typer.Context):
         typer.echo(ctx.get_help())
 
 
+@pipeline_app.command("show")
+def pipeline_show():
+    """显示流水线状态（草稿数量、待审核任务）"""
+    ensure_initialized()
+
+    from huaqi_src.pipeline.platforms import XiaoHongShuPublisher
+    from huaqi_src.scheduler.pipeline_job import PipelineJobManager
+
+    console.print("\n[bold cyan]🚀 流水线状态[/bold cyan]\n")
+
+    publisher = XiaoHongShuPublisher()
+    drafts = publisher.list_drafts()
+    console.print(f"  草稿数量: [cyan]{len(drafts)}[/cyan]")
+
+    manager = PipelineJobManager()
+    reviews = manager.list_pending_reviews()
+    console.print(f"  待审核任务: [cyan]{len(reviews)}[/cyan]")
+    console.print()
+
+
 @pipeline_app.command("run")
 def pipeline_run(
     dry_run: bool = typer.Option(False, "--dry-run", "-d", help="预览模式，不实际发布"),

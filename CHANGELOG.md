@@ -7,6 +7,23 @@
 ## [Unreleased]
 
 ### Added
+- 新增 `huaqi resume <task_id> [response]` 命令，支持 LangGraph 工作流的中断恢复（人机协同）。
+- 新增 `huaqi daemon` 命令（start/stop/status/list），支持后台定时任务管理。
+- 新增 `huaqi pipeline review` 命令，支持内容流水线的人工审核机制。
+- 新增 `huaqi personality review` 和 `huaqi personality update` 命令，支持人格画像自动更新与人工审核。
+- 新增 `huaqi system hot-reload` 和 `huaqi system migrate` 命令，支持配置热更新与数据迁移。
+- 引入 ChromaDB + BM25 的混合向量检索，大幅提升相关记忆片段的提取准确率。
+
+### Changed
+- 重构核心对话引擎，全面迁移至基于 `langgraph.graph.StateGraph` 的 Agent 架构。
+- 优化 APScheduler 调度器集成，降级至稳定的 3.x 版本，并支持在 CLI 前后台安全运行。
+- 重新组织和拆分各个模块代码至 `agent/`, `pipeline/`, `scheduler/`。
+
+### Fixed
+- 修复了新版 `langgraph-checkpoint-sqlite` 的 API 变更导致的连接断开与版本不匹配错误。
+- 修复了前台运行 Daemon 时由于缺少事件循环导致的 `RuntimeError` 崩溃。
+
+### Added
 - 核心引擎：新增 `ConfigManager` 以支持默认关闭（Opt-in）的系统模块开关配置（网络代理、微信拦截等）。
 - 核心引擎：新增带正则自动脱敏机制的统一 `Event` 数据结构。
 - 核心引擎：新增基于 SQLite 的 `LocalDBStorage`，用于持久化存储微信和 CLI 的系统交互事件，数据文件自动落盘到系统统一定义的数据目录。

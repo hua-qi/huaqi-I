@@ -1,8 +1,5 @@
 """profile 子命令"""
 
-from pathlib import Path
-from typing import Optional
-
 import typer
 from rich import box
 from rich.panel import Panel
@@ -17,34 +14,6 @@ profile_app = typer.Typer(name="profile", help="用户画像管理")
 def profile_callback(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
-
-
-def _build_llm_manager_for_analysis():
-    import os
-    import huaqi_src.cli.context as ctx
-    from huaqi_src.core.llm import LLMManager, LLMConfig
-
-    if ctx._config is None:
-        return None
-    config = ctx._config.load_config()
-    provider_name = config.llm_default_provider
-    if provider_name not in config.llm_providers:
-        return None
-    provider_config = config.llm_providers[provider_name]
-    api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    llm = LLMManager()
-    llm_config = LLMConfig(
-        provider=provider_config.name,
-        model=provider_config.model,
-        api_key=api_key,
-        api_base=provider_config.api_base,
-        temperature=0.7,
-        max_tokens=1500,
-        timeout=60,
-    )
-    llm.add_config(llm_config)
-    llm.set_active(provider_config.name)
-    return llm
 
 
 @profile_app.command("show")
@@ -70,7 +39,7 @@ def profile_show():
             sources_str = "、".join(cached.data_sources) if cached.data_sources else "无"
             console.print(f"[dim]数据来源: {sources_str}  |  生成时间: {cached.generated_at[:10]}[/dim]\n")
         else:
-            console.print("[dim]（画像描述生成于昨天或更早，运行 `huaqi profile refresh` 可刷新）[/dim]\n")
+            console.print("[dim]（画像描述生成于昨天或更早）[/dim]\n")
             console.print(Panel(
                 cached.content,
                 title="[bold cyan]AI 洞察（旧）[/bold cyan]",
@@ -78,7 +47,7 @@ def profile_show():
                 padding=(1, 2),
             ))
     else:
-        console.print("[dim]尚未生成 AI 画像描述。运行 `huaqi profile refresh` 立即生成。[/dim]\n")
+        console.print("[dim]尚未生成 AI 画像描述。[/dim]\n")
 
     profile_manager = get_profile_manager()
     profile = profile_manager.profile
@@ -127,36 +96,6 @@ def profile_show():
     console.print(f"\n[dim]结构化版本: {profile.version}  |  更新: {profile.updated_at[:10]}[/dim]\n")
 
 
-@profile_app.command("refresh")
-def profile_refresh():
-    """立即重新生成 AI 叙事画像（调用 LLM，忽略今日缓存）"""
-    ensure_initialized()
-
-    from huaqi_src.core.user_profile import get_narrative_manager
-
-    console.print("[dim]正在生成 AI 画像，请稍候...[/dim]")
-
-    llm = _build_llm_manager_for_analysis()
-    if llm is None:
-        console.print("[red]❌ LLM 未配置，请先运行: huaqi config set-llm[/red]")
-        raise typer.Exit(1)
-
-    narrative_manager = get_narrative_manager()
-    try:
-        narrative = narrative_manager.generate(llm)
-        console.print()
-        console.print(Panel(
-            narrative.content,
-            title="[bold cyan]AI 洞察[/bold cyan]",
-            border_style="cyan",
-            padding=(1, 2),
-        ))
-        sources_str = "、".join(narrative.data_sources) if narrative.data_sources else "无"
-        console.print(f"[dim]数据来源: {sources_str}[/dim]\n")
-        console.print("[green]✅ 画像已更新并缓存[/green]")
-    except Exception as e:
-        console.print(f"[red]❌ 生成失败: {e}[/red]")
-
 
 @profile_app.command("set")
 def profile_set(
@@ -191,31 +130,3 @@ def profile_set(
     console.print(f"[yellow]❌ 未知字段: {field}[/yellow]")
     console.print(f"[dim]可用字段: {', '.join(identity_fields + background_list_fields)}[/dim]")
 
-
-@profile_app.command("forget")
-def profile_forget(
-    field: str = typer.Argument(..., help="要删除的字段名"),
-):
-    """删除用户画像字段"""
-    ensure_initialized()
-
-    from huaqi_src.core.user_profile import get_profile_manager
-
-    profile_manager = get_profile_manager()
-    profile = profile_manager.profile
-
-    identity_fields = ["name", "nickname", "birth_date", "location", "occupation", "company"]
-    if field in identity_fields:
-        setattr(profile.identity, field, None)
-        profile_manager.save()
-        console.print(f"[green]✅ 已删除 {field}[/green]")
-        return
-
-    background_list_fields = ["skills", "hobbies", "life_goals", "values"]
-    if field in background_list_fields:
-        setattr(profile.background, field, [])
-        profile_manager.save()
-        console.print(f"[green]✅ 已清空 {field}[/green]")
-        return
-
-    console.print(f"[yellow]❌ 未知字段: {field}[/yellow]")

@@ -22,11 +22,11 @@
 # 安装
 pip install -e .
 
-# 启动
+# 启动（首次运行自动引导设置数据目录）
 huaqi
 
 # 配置 LLM
-huaqi config set-llm
+huaqi config set llm
 ```
 
 详见 [QUICK_START.md](QUICK_START.md)
@@ -42,10 +42,12 @@ huaqi profile show                # 查看画像
 huaqi profile set name 子蒙       # 设置字段
 
 # 配置
-huaqi config set-llm openai --api-key <key>   # 配置 LLM
-huaqi config set-data-dir <path>              # 设置数据目录
+huaqi config show                 # 查看所有配置
+huaqi config set llm              # 配置 LLM（交互向导）
+huaqi config set data_dir         # 设置/修改数据目录
 
 # 流水线
+huaqi pipeline show               # 查看流水线状态
 huaqi pipeline run --dry-run      # 预览内容流水线
 huaqi pipeline run                # 执行流水线
 

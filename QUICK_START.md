@@ -12,6 +12,7 @@ pip install -e .
 ## 启动对话
 
 ```bash
+# 首次运行：自动引导设置数据目录
 huaqi
 ```
 
@@ -116,7 +117,7 @@ huaqi
 ## 配置 LLM
 
 ```bash
-huaqi config set-llm
+huaqi config set llm
 ```
 
 按提示输入：
