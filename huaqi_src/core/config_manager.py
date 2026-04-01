@@ -9,8 +9,6 @@ class ConfigManager:
             import os
             if os.getenv("HUAQI_ENABLE_NETWORK") == "1":
                 self._enabled_modules.add("network_proxy")
-            if os.getenv("HUAQI_ENABLE_WECHAT") == "1":
-                self._enabled_modules.add("wechat")
 
             # 尝试从持久化配置读取
             from huaqi_src.core.config_paths import get_data_dir

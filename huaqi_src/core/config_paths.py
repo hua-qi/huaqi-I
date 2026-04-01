@@ -165,6 +165,56 @@ def get_pending_reviews_dir() -> Path:
     return require_data_dir() / "pending_reviews"
 
 
+def get_learning_dir() -> Path:
+    """获取学习数据目录"""
+    return require_data_dir() / "learning"
+
+
+def get_diary_dir() -> Path:
+    """获取日记目录"""
+    return get_memory_dir() / "diary"
+
+
+def get_conversations_dir() -> Path:
+    """获取对话记录目录"""
+    return get_memory_dir() / "conversations"
+
+
+def get_work_docs_dir() -> Path:
+    """获取工作文档存储目录"""
+    return get_memory_dir() / "work_docs"
+
+
+def get_cli_chats_dir() -> Path:
+    """获取 CLI 对话记录目录"""
+    return get_memory_dir() / "cli_chats"
+
+
+def get_wechat_dir() -> Path:
+    """获取微信聊天记录目录"""
+    return get_memory_dir() / "wechat"
+
+
+def get_inbox_work_docs_dir() -> Path:
+    """获取待导入工作文档目录"""
+    return require_data_dir() / "inbox" / "work_docs"
+
+
+def get_wechat_db_dir() -> Path:
+    """获取微信数据库目录"""
+    return require_data_dir() / "wechat_db"
+
+
+def get_people_dir() -> Path:
+    """获取关系人信息目录"""
+    return require_data_dir() / "people"
+
+
+def get_world_dir() -> Path:
+    """获取世界新闻存储目录"""
+    return require_data_dir() / "world"
+
+
 def get_scheduler_db_path() -> Path:
     """获取调度器数据库路径"""
     return require_data_dir() / "scheduler.db"
@@ -178,6 +228,7 @@ def ensure_dirs():
         get_vector_db_dir(),
         get_models_cache_dir(),
         get_pending_reviews_dir(),
+        get_learning_dir(),
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)

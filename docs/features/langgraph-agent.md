@@ -24,10 +24,10 @@ intent_classifier      识别意图（规则匹配，默认 chat）
 context_builder        构建系统提示词（5层：角色 + 人格 + 画像 + 状态 + 近期日记）
     │
     ▼
-memory_retriever       混合检索历史记忆（Embedding bge-small-zh + BM25，top-3）
+memory_retriever       双轨记忆检索（见下方"记忆检索"章节）
     │
     ▼
-tools_node             LLM自发调用的交互工具节点（如 `search_diary_tool`, `search_events_tool`）
+tools_node             LLM自发调用的交互工具节点（如 `search_diary_tool`, `search_huaqi_chats_tool`）
     │
     ▼
 user_analyzer          维度分析（情绪/能量/焦虑/动机，写入 workflow_data）
@@ -105,6 +105,43 @@ chat_model = ChatOpenAI(
 
 ---
 
+### 记忆检索（双轨制）
+
+**问题背景**：Chroma 向量库在 `save_conversation`（对话结束）时才写入，因此同一天内其他 session 的对话不在向量库中，导致当日记忆"断层"。
+
+**解决方案**：`memory_retriever` 节点采用双轨检索：
+
+| 来源 | 覆盖范围 | 机制 |
+|------|---------|------|
+| Chroma 向量库 | 历史全量（跨天） | Embedding bge-small-zh + BM25 混合检索，top-3 |
+| 今日 Markdown 扫描 | 当天所有 session | 2-gram 关键词宽松匹配，扫描 `YYYYMMDD_*.md` |
+
+两路结果按前 60 字符去重，合并后取 top-5 注入 system prompt（每条截断 200 字、总量上限 1000 字）。
+
+**工具层补充**：新增 `search_huaqi_chats_tool`，LLM 可在对话中按需调用，支持深度检索全部历史 Huaqi 对话（向量库 + Markdown 全文），适用于"你还记得...吗"类问题。
+
+---
+
+## Agent 工具列表
+
+当前注册到 ToolNode 的全部工具：
+
+| 工具名 | 触发语义 |
+|--------|---------|
+| `search_diary_tool` | 搜索历史日记 |
+| `search_events_tool` | 搜索 CLI 交互事件记录 |
+| `search_work_docs_tool` | 搜索工作文档 |
+| `search_worldnews_tool` | 搜索近期世界新闻 |
+| `search_person_tool` | 查询某人画像 |
+| `get_relationship_map_tool` | 获取关系网络全图 |
+| `search_cli_chats_tool` | 搜索与 CLI 工具的历史对话 |
+| `search_huaqi_chats_tool` | 搜索与 Huaqi 的历史对话 |
+| `get_learning_progress_tool` | 查询某技术的学习进度 |
+| `get_course_outline_tool` | 获取某技术的课程大纲 |
+| `start_lesson_tool` | 开始/继续学习某技术当前章节 |
+
+---
+
 ## 接口与使用
 
 ### CLI 命令
@@ -133,13 +170,15 @@ huaqi chat -s <thread_id>      # 恢复指定会话
 
 - `huaqi_src/agent/chat_agent.py` - ChatAgent 主类（流式 + 会话管理）
 - `huaqi_src/agent/graph/chat.py` - StateGraph 构建与编译（AsyncSqliteSaver）
-- `huaqi_src/agent/nodes/chat_nodes.py` - 全部节点实现
+- `huaqi_src/agent/nodes/chat_nodes.py` - 全部节点实现（含双轨记忆检索）
+- `huaqi_src/agent/tools.py` - Agent 工具集（全部 @tool 定义与 re-export）
 - `huaqi_src/agent/state.py` - AgentState TypedDict 定义
 - `huaqi_src/cli/chat.py` - `run_langgraph_chat()` CLI 入口
 - `huaqi_src/cli/__init__.py` - `--session`/`--list-sessions` 参数定义
+- `huaqi_src/learning/learning_tools.py` - 学习助手工具（3 个 @tool）
 - `spec/decisions/ADR-004-langgraph-default-mode.md` - 架构决策与踩坑记录
 
 ---
 
-**文档版本**: v1.0  
-**最后更新**: 2026-03-29
+**文档版本**: v1.2
+**最后更新**: 2026-03-31

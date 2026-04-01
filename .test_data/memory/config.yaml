@@ -1,0 +1,13 @@
+custom: {}
+data_dir: null
+interface_language: zh
+interface_theme: default
+llm_default_provider: dummy
+llm_providers: {}
+memory:
+  max_session_memory: 100
+  search_algorithm: hybrid
+  search_top_k: 5
+modules:
+  network_proxy: true
+version: 0.1.0

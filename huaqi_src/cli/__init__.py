@@ -13,6 +13,10 @@ from huaqi_src.cli.commands.profile import profile_app
 from huaqi_src.cli.commands.pipeline import pipeline_app
 from huaqi_src.cli.commands.personality import personality_app
 from huaqi_src.cli.commands.system import system_app, daemon_command_handler
+from huaqi_src.cli.inbox import app as inbox_app
+from huaqi_src.cli.commands.people import people_app
+from huaqi_src.cli.commands.collector import app as collector_app
+from huaqi_src.cli.commands.study import study_app
 
 app = typer.Typer(
     name="huaqi",
@@ -26,6 +30,10 @@ app.add_typer(profile_app, rich_help_panel="配置管理")
 app.add_typer(personality_app, rich_help_panel="配置管理")
 app.add_typer(pipeline_app, rich_help_panel="操作工具")
 app.add_typer(system_app, rich_help_panel="操作工具")
+app.add_typer(inbox_app, name="inbox", rich_help_panel="操作工具")
+app.add_typer(people_app, name="people", rich_help_panel="操作工具")
+app.add_typer(collector_app, name="collector", rich_help_panel="操作工具")
+app.add_typer(study_app, name="study", rich_help_panel="操作工具")
 
 
 @app.command("chat")
@@ -122,7 +130,15 @@ def main(
         _wizard_set_data_dir(_ctx)
 
     _ctx.DATA_DIR = get_data_dir()
-    _ctx.MEMORY_DIR = _ctx.DATA_DIR / "memory"
+    from huaqi_src.core.config_paths import get_memory_dir
+    _ctx.MEMORY_DIR = get_memory_dir() if is_data_dir_set() else None
+
+    if is_data_dir_set() and ctx.invoked_subcommand == "daemon":
+        from huaqi_src.scheduler.jobs import register_default_jobs
+        from huaqi_src.scheduler.manager import get_scheduler_manager
+        _scheduler = get_scheduler_manager()
+        register_default_jobs(_scheduler)
+        _scheduler.start()
 
     if ctx.invoked_subcommand is None:
         from huaqi_src.cli.chat import run_langgraph_chat

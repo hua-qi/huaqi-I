@@ -28,7 +28,8 @@ huaqi-growing/
 │   │   │   ├── design.md            # 主动关怀设计
 │   │   │   └── impl.md              # 主动关怀实现
 │   │   ├── pattern-learning.md      # 模式学习
-│   │   └── langgraph-agent.md       # LangGraph Agent 对话系统
+│   │   ├── langgraph-agent.md       # LangGraph Agent 对话系统
+│   │   └── listeners.md             # 监听采集（微信 + CLI 对话）
 │   ├── guides/                      # 用户与开发者指南
 │   │   ├── code-organization.md     # 代码及文件组织规范（供 agent 参考）
 │   │   ├── cli-guide.md             # CLI 命令完整参考

@@ -7,6 +7,69 @@
 ## [Unreleased]
 
 ### Added
+- 学习助手新增 `mark_lesson_complete_tool`：标记当前章节为已完成，自动推进到下一章，已注册到 LangGraph ToolNode 和 `chat_nodes.py` bind_tools。
+- `LessonOutline` 新增 `lesson_type` 字段（默认 `"quiz"`，可选 `"coding"` / `"project"`），支持 YAML 序列化，旧数据向后兼容。
+- `CourseGenerator` 新增 `generate_outline_with_types()` 方法，通过关键词推断章节类型并返回 `List[tuple[str, str]]`。
+
+### Changed
+- `generate_feedback()` 新增 `passed: bool = None` 参数：`passed=True` 时末尾追加 `\n\n[PASS]`，`passed=False` 时追加 `\n\n[FAIL]`，不传则不变（向后兼容）。
+- `start_lesson_tool` 创建新课程时改用 `generate_outline_with_types()`，同步写入每章 `lesson_type`。
+- `CourseGenerator` 从 `start_lesson_tool` 函数内部导入改为 `learning_tools.py` 模块顶部导入，方便测试 Mock。
+
+### Added
+- 报告生成系统引入 DataProvider 注册表：新增抽象基类 `DataProvider`、全局注册表及 `build_context()` 统一入口，新增 7 个 Provider 实现（`WorldProvider`、`DiaryProvider`、`PeopleProvider`、`LearningProvider`、`GrowthProvider`、`EventsProvider`、`WeeklyReportsProvider`）。
+- `WeeklyReportAgent` 和 `QuarterlyReportAgent` 新增 `LearningProvider` 和 `GrowthProvider` 数据来源（原版无此两项）。
+
+### Changed
+- `MorningBriefAgent`、`DailyReportAgent`、`WeeklyReportAgent`、`QuarterlyReportAgent` 的 `_build_context()` 方法重构为调用 `context_builder.build_context()`，原内嵌数据读取逻辑迁移至对应 Provider。
+
+### Removed
+- 移除微信采集所有对外入口：`huaqi collector sync-wechat` CLI 命令、`search_wechat_tool` Agent Tool、`wechat_sync` 调度器定时任务。
+- 相关底层代码文件（`wechat_reader.py`、`wechat_state.py`、`wechat_writer.py`、`wechat_watcher.py`、`wechat_webhook.py`）保留但已封存，文件头加注声明：非作者本人声明不得重新添加任何入口。原因同前：微信 4.x macOS 版 SQLCipher 加密 + macOS SIP 保护，无合规读取路径。
+
+### Added
+- 重新实现微信聊天记录采集模块，新增 `wechat_reader.py`（`WeChatDBReader` + `WeChatMessage`）、`wechat_state.py`（增量同步状态持久化）、`wechat_writer.py`（Markdown 归档）、`wechat_watcher.py`（整合三者的 `WeChatWatcher`）。
+- `pyproject.toml` 新增 `asyncio_mode = "auto"` 配置，支持 `pytest-asyncio` 异步测试。
+
+### Changed
+- **路径统一化重构**：将全项目中硬编码的数据子路径改为统一通过 `config_paths.py` 函数管理，所有路径现随用户配置的 `data_dir` 变化。新增以下 9 个路径函数：`get_diary_dir()`、`get_conversations_dir()`、`get_work_docs_dir()`、`get_cli_chats_dir()`、`get_wechat_dir()`、`get_inbox_work_docs_dir()`、`get_wechat_db_dir()`、`get_people_dir()`、`get_world_dir()`。
+- 学习助手数据目录从 `{data_dir}/memory/learning/` 调整为 `{data_dir}/learning/`，与其他顶级目录（`people/`、`world/`）保持一致层级。
+- `PeopleGraph`、`WorldNewsStorage`、`DailyReportAgent`、`MorningBriefAgent`、`WeeklyReportAgent`、`InboxProcessor`、`WeChatWriter` 均改为：传入 `data_dir` 时优先使用，未传时通过 `config_paths` 全局函数获取。
+- `scheduler/jobs.py` 中 `_get_learning_store()` 改用 `get_learning_dir()`。
+- `cli/__init__.py` 中 `MEMORY_DIR` 改用 `get_memory_dir()` 获取。
+- `cli/commands/system.py` 两处 `ctx.DATA_DIR / "memory"` 改用 `get_memory_dir()`。
+- `cli/inbox.py` 两处路径改用 `get_inbox_work_docs_dir()` / `get_work_docs_dir()`。
+- `agent/nodes/chat_nodes.py` 两处 `memory/conversations` 改用 `get_conversations_dir()`。
+
+### Fixed
+- 修复 `tests/cli/test_study_cli.py::test_study_list_with_courses` 中测试数据写入旧路径导致的断言失败。
+
+### Added
+- 学习助手模块 `huaqi_src/learning/`：支持系统性技术学习（大纲生成 → 章节讲解 → 出题考察 → 进度持久化）。
+- 新增 3 个 Agent 工具：`get_learning_progress_tool`、`get_course_outline_tool`、`start_lesson_tool`，已注册到 LangGraph ToolNode，用户可在对话中直接触发学习流程。
+- 新增 `huaqi study` CLI 命令，支持查看课程列表（`--list`）、开始学习（`huaqi study <技术名>`）、重置进度（`--reset`）。
+- 新增学习进度定时推送：`learning_daily_push` 每晚 21:00 自动生成进行中课程的复习题，通过 Scheduler 触发。
+- 学习进度通过 YAML 文件持久化到 `{data_dir}/memory/learning/courses/<slug>/outline.yaml`，学习会话记录存入 `sessions/YYYYMMDD_<slug>.md`。
+
+### Added
+- 跨 Session 记忆召回（双轨制）：
+  - 自动层：`retrieve_memories` 节点在向量库检索之外，额外扫描当天 `memory/conversations/` Markdown 文件，使用 2-gram 关键词宽松匹配，覆盖同一天内向量库尚未收录的对话。
+  - 工具层：新增 `search_huaqi_chats_tool`，LLM 可按需深度检索全部历史 Huaqi 对话（向量库 + Markdown 全文）。
+  - 注入优化：`generate_response` 的记忆注入限制每条 200 字、总量 1000 字，防止 token 超限。
+
+### Removed
+- 移除微信聊天记录采集功能：删除 `WeChatWatcher`、`WeChatDBReader`、`WeChatWriter`、`WeChatSyncState` 及全部相关代码。原因：微信 4.x macOS 版本改用 SQLCipher 加密存储，且 SIP 保护阻止了必要的进程签名操作，无法在不破坏系统安全策略的前提下读取本地数据库。
+- 移除 `search_wechat_tool` Agent Tool。
+- 移除 `huaqi collector sync-wechat` CLI 命令。
+- 移除 `modules.wechat` 配置项及相关调度器定时任务 `wechat_sync`。
+
+### Added
+- Phase 3 监听采集：新增 `CLIChatWatcher`，监听用户配置的 CLI 工具对话目录（codeflicker Markdown / Claude JSON），解析并写入 `memory/cli_chats/YYYY-MM/<工具名>-<文件名>.md`。
+- Agent Tools：新增 `search_cli_chats_tool`，允许 LangGraph Agent 在回答时检索 CLI 对话历史。
+- CLI：新增 `huaqi collector` 子命令组（`status` / `sync-cli`），支持手动触发采集和查看模块开启状态。
+- 新增 `docs/features/listeners.md` 监听采集功能文档。
+
+### Added
 - 新增 `huaqi resume <task_id> [response]` 命令，支持 LangGraph 工作流的中断恢复（人机协同）。
 - 新增 `huaqi daemon` 命令（start/stop/status/list），支持后台定时任务管理。
 - 新增 `huaqi pipeline review` 命令，支持内容流水线的人工审核机制。

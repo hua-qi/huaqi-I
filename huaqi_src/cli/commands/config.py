@@ -24,7 +24,6 @@ KEY_DESCRIPTIONS = {
     "memory.search_algorithm": "搜索算法",
     "memory.search_top_k": "搜索返回数量",
     "modules.network_proxy": "网络请求采集模块",
-    "modules.wechat": "微信聊天记录采集模块",
     "interface_theme": "界面主题",
     "interface_language": "界面语言",
     "git.remote_url": "Git 远程地址",
@@ -89,7 +88,7 @@ def _flatten_config(config, prefix="") -> list[tuple[str, str, str]]:
         rows.append((key, _get_description(key), display))
 
     modules = config.modules
-    for field in ["network_proxy", "wechat"]:
+    for field in ["network_proxy"]:
         key = f"modules.{field}"
         val = modules.get(field, False)
         display = "开启" if val else "关闭"

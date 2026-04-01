@@ -230,38 +230,93 @@ def analyze_user_understanding(state: AgentState) -> Dict[str, Any]:
 
 def retrieve_memories(state: AgentState) -> Dict[str, Any]:
     """检索记忆节点
-    
-    从向量库中检索相关记忆
+
+    来源 1: Chroma 向量库（语义相关，覆盖历史）
+    来源 2: 当天 Markdown 文件直接扫描（覆盖向量库尚未收录的今日对话）
+    合并去重后注入 system prompt。
     """
     messages = state.get("messages", [])
-    
-    # 获取最后一条用户消息作为查询
+
     query = ""
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             query = msg.content
             break
-    
+
     if not query:
         return {"recent_memories": []}
-    
+
+    memories: List[str] = []
+
+    # --- 来源 1: Chroma 向量库 ---
     try:
         from ...memory.vector import get_hybrid_search
-        
+
         search = get_hybrid_search(use_vector=True, use_bm25=True)
         results = search.search(query, top_k=3)
-        
-        memories = []
+
         for r in results:
             content = r.get("content", "")
             if content:
-                memories.append(content)
-        
-        return {"recent_memories": memories}
-        
+                memories.append(content[:300])
     except Exception as e:
-        logger.debug(f"记忆检索失败: {e}")
-        return {"recent_memories": []}
+        logger.debug(f"向量库检索失败: {e}")
+
+    # --- 来源 2: 今天的 Markdown 文件扫描 ---
+    try:
+        from datetime import date as _date
+        from ...core.config_paths import get_conversations_dir
+        from ...memory.storage.markdown_store import MarkdownMemoryStore
+
+        conversations_dir = get_conversations_dir()
+
+        if conversations_dir.exists():
+            today_str = _date.today().strftime("%Y%m%d")
+            today_dir = conversations_dir / _date.today().strftime("%Y/%m")
+
+            if today_dir.exists():
+                query_lower = query.lower()
+                keywords = [query_lower[i:i+2] for i in range(0, len(query_lower) - 1, 2)]
+                keywords = [k for k in keywords if len(k) >= 2]
+                if not keywords:
+                    keywords = [query_lower]
+
+                for md_file in sorted(today_dir.glob(f"{today_str}_*.md"), reverse=True)[:20]:
+                    try:
+                        content = md_file.read_text(encoding="utf-8")
+                        content_lower = content.lower()
+                        hit_keyword = next((k for k in keywords if k in content_lower), None)
+                        if hit_keyword is None:
+                            continue
+                        lines = content.split("\n")
+                        snippet_lines: List[str] = []
+                        for i, line in enumerate(lines):
+                            if hit_keyword in line.lower():
+                                start = max(0, i - 2)
+                                end = min(len(lines), i + 3)
+                                snippet_lines.extend(lines[start:end])
+                                snippet_lines.append("...")
+                                if len(snippet_lines) > 15:
+                                    break
+                        snippet = "\n".join(snippet_lines[:15]).strip()
+                        if snippet:
+                            date_label = md_file.stem[:8]
+                            memories.append(f"[今天 {date_label[4:6]}/{date_label[6:8]}]\n{snippet[:250]}")
+                    except Exception:
+                        continue
+    except Exception as e:
+        logger.debug(f"Markdown 今日记忆扫描失败: {e}")
+
+    # 去重（按前 60 字符粗略去重）
+    seen: set = set()
+    unique_memories: List[str] = []
+    for m in memories:
+        key = m[:60]
+        if key not in seen:
+            seen.add(key)
+            unique_memories.append(m)
+
+    return {"recent_memories": unique_memories[:5]}
 
 
 async def generate_response(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
@@ -276,8 +331,11 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
     system_prompt = workflow_data.get("system_prompt", build_system_prompt())
 
     if memories:
-        memory_text = "\n\n相关记忆：\n" + "\n".join([f"- {m}" for m in memories])
-        system_prompt += memory_text
+        trimmed = [m[:200] for m in memories]
+        combined = "\n".join([f"- {m}" for m in trimmed])
+        if len(combined) > 1000:
+            combined = combined[:1000] + "\n...(记忆截断)"
+        system_prompt += f"\n\n相关历史记忆（自动检索）：\n{combined}"
 
     full_messages = [SystemMessage(content=system_prompt)] + messages
 
@@ -303,8 +361,24 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
             streaming=True,
         )
         
-        from ..tools import search_diary_tool, search_events_tool
-        tools = [search_diary_tool, search_events_tool]
+        from ..tools import (
+            search_diary_tool,
+            search_events_tool,
+            search_huaqi_chats_tool,
+            get_learning_progress_tool,
+            get_course_outline_tool,
+            start_lesson_tool,
+            mark_lesson_complete_tool,
+        )
+        tools = [
+            search_diary_tool,
+            search_events_tool,
+            search_huaqi_chats_tool,
+            get_learning_progress_tool,
+            get_course_outline_tool,
+            start_lesson_tool,
+            mark_lesson_complete_tool,
+        ]
         chat_model_with_tools = chat_model.bind_tools(tools)
 
         response_msg = None
@@ -351,13 +425,13 @@ def save_conversation(state: AgentState) -> Dict[str, Any]:
 
     try:
         from datetime import datetime as dt
-        from ...core.config_paths import get_memory_dir
+        from ...core.config_paths import get_conversations_dir
         from ...memory.storage.markdown_store import MarkdownMemoryStore
 
         now = dt.now()
         session_id = state.get("workflow_data", {}).get("thread_id", now.strftime("%Y%m%d_%H%M%S"))
 
-        memory_store = MarkdownMemoryStore(get_memory_dir() / "conversations")
+        memory_store = MarkdownMemoryStore(get_conversations_dir())
         filepath = memory_store.save_conversation(
             session_id=session_id,
             timestamp=now,

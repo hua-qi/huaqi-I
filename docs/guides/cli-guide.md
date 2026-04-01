@@ -80,7 +80,7 @@ huaqi config show                  # 查看所有配置项
 
 # 通用设置
 huaqi config set <KEY>             # 设置配置项（使用交互向导输入值）
-huaqi config set <KEY> <VALUE>     # 单行直接设置配置项（如：huaqi config set modules.wechat true）
+huaqi config set <KEY> <VALUE>     # 单行直接设置配置项
 
 # 常用配置 KEY
 huaqi config set llm               # 配置 LLM（交互向导）
@@ -99,7 +99,6 @@ huaqi config set data_dir          # 修改数据目录（支持数据迁移）
 | `llm_providers.<name>.api_base` | API 地址 |
 | `memory.max_session_memory` | 最大会话记忆条数 |
 | `modules.network_proxy` | 网络请求采集模块开启状态（`true`/`false`） |
-| `modules.wechat` | 微信聊天记录采集模块开启状态（`true`/`false`） |
 | `git.remote_url` | Git 远程地址 |
 | `git.branch` | Git 分支 |
 | `git.auto_push` | 自动推送开关 |
@@ -206,6 +205,70 @@ huaqi system backup                # 创建 memory/ 备份快照
 
 ---
 
+## 数据采集器 `collector`
+
+采集 CLI 工具对话历史，写入数据湖供 Agent 检索。
+
+> 微信采集相关命令（`sync-wechat`）已移除，详见 `docs/features/listeners.md`。
+
+```bash
+huaqi collector status             # 查看各采集模块开启状态及数据目录
+huaqi collector sync-cli           # 手动触发一次 CLI 对话历史同步
+```
+
+**开启 CLI 采集模块：**
+
+```bash
+huaqi config set modules.cli_chat true
+```
+
+**数据写入路径：**
+
+| 类型 | 路径 |
+|------|------|
+| CLI 对话 | `{data_dir}/memory/cli_chats/YYYY-MM/<工具名>-<文件名>.md` |
+
+---
+
+## 学习助手 `study`
+
+系统性技术学习：LLM 自动生成大纲，逐章讲解，出题考察，进度持久化。
+
+```bash
+huaqi study --list                 # 列出所有课程及进度
+huaqi study <技术名>               # 开始/继续学习（首次自动生成大纲）
+huaqi study --reset <技术名>       # 重置课程进度（删除本地 YAML）
+```
+
+**示例：**
+
+```bash
+huaqi study rust                   # 开始学 Rust（首次自动生成 6-10 章大纲）
+huaqi study "Python 3"             # 继续学 Python 3
+huaqi study --list                 # 查看所有课程进度表格
+huaqi study --reset rust           # 重置 Rust 课程，从头开始
+```
+
+**也可通过 Agent 对话触发：**
+
+```
+「帮我开始学 Rust」         → 自动生成大纲 + 讲解第一章 + 出题
+「继续学 Rust」             → 从当前章节继续
+「我 Rust 学到哪了」        → 显示进度
+「Rust 课程有哪些章节」     → 显示大纲
+```
+
+**数据存储路径：**
+
+| 类型 | 路径 |
+|------|------|
+| 课程大纲 + 进度 | `{data_dir}/learning/courses/<slug>/outline.yaml` |
+| 学习会话记录 | `{data_dir}/learning/sessions/YYYYMMDD_<slug>.md` |
+
+> 每晚 21:00，系统自动推送进行中课程的复习题（需 `huaqi daemon start` 运行后台服务）。
+
+---
+
 ## 完整工作流示例
 
 ```bash
@@ -238,4 +301,9 @@ huaqi pipeline show                # 先查看状态
 huaqi pipeline run --dry-run       # 预览
 huaqi pipeline run                 # 正式运行
 huaqi pipeline review              # 审核草稿
+
+# 8. 系统性学习技术
+huaqi study rust                   # 开始学 Rust（自动生成大纲、讲解第一章、出题）
+huaqi study --list                 # 查看所有课程进度
+huaqi daemon start                 # 启动后台服务，每晚 21:00 自动推送复习题
 ```

@@ -17,18 +17,12 @@ def webhook_server(
     host: str = typer.Option("127.0.0.1", "--host", help="监听地址"),
     port: int = typer.Option(8080, "--port", help="监听端口"),
 ):
-    """启动外部事件(如微信)的 Webhook 监听服务器"""
+    """启动外部事件的 Webhook 监听服务器"""
     ensure_initialized()
     from huaqi_src.integrations.wechat_webhook import run_server
-    from huaqi_src.core.config_manager import ConfigManager
-    import sys
-    
-    config = ConfigManager()
+
     console.print(f"\n[bold green]🚀 启动 Webhook 接收服务器 ({host}:{port})[/bold green]")
-    if not config.is_enabled("wechat"):
-        console.print("[yellow]⚠️ 警告：当前微信采集模块未开启，收到的消息将被拒绝。[/yellow]")
-        console.print("[dim]提示：可通过 'huaqi config set modules.wechat true' 开启。[/dim]")
-    console.print("\n[dim]测试命令: curl -X POST http://127.0.0.1:8080/api/webhook/wechat -d '{\"actor\": \"张三\", \"content\": \"你好呀\"}'[/dim]")
+    console.print('[dim]测试命令: curl -X POST http://127.0.0.1:8080/api/webhook/wechat -d \'{"actor": "张三", "content": "你好呀"}\'[/dim]')
     console.print("[dim]使用 Ctrl+C 停止服务器...[/dim]\n")
     
     try:
@@ -52,7 +46,8 @@ def system_show():
 
     console.print(f"  数据目录: [cyan]{ctx.DATA_DIR}[/cyan]")
 
-    memory_dir = ctx.DATA_DIR / "memory"
+    from huaqi_src.core.config_paths import get_memory_dir
+    memory_dir = get_memory_dir()
     memory_count = len(list(memory_dir.glob("*.md"))) if memory_dir.exists() else 0
     console.print(f"  记忆文件: [cyan]{memory_count}[/cyan] 条")
 
@@ -146,7 +141,8 @@ def system_backup():
     backup_dir = ctx.DATA_DIR / "backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    memory_dir = ctx.DATA_DIR / "memory"
+    from huaqi_src.core.config_paths import get_memory_dir
+    memory_dir = get_memory_dir()
 
     if memory_dir.exists():
         shutil.copytree(memory_dir, backup_dir / "memory", dirs_exist_ok=True)
@@ -155,8 +151,40 @@ def system_backup():
         console.print("\n[yellow]无数据可备份[/yellow]\n")
 
 
+_PLIST_LABEL = "com.huaqi.daemon"
+_PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{_PLIST_LABEL}.plist"
+
+
+def _get_plist_content(huaqi_bin: str, log_dir: Path) -> str:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{_PLIST_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{huaqi_bin}</string>
+        <string>daemon</string>
+        <string>start</string>
+        <string>--foreground</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{log_dir}/daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>{log_dir}/daemon.err</string>
+</dict>
+</plist>
+"""
+
+
 def daemon_command_handler(
-    action: str = typer.Argument(..., help="操作: start/stop/status/list"),
+    action: str = typer.Argument(..., help="操作: start/stop/status/list/install/uninstall"),
     foreground: bool = typer.Option(False, "--foreground", "-f", help="前台运行模式"),
 ):
     """管理后台定时任务服务"""
@@ -165,6 +193,32 @@ def daemon_command_handler(
     from huaqi_src.scheduler import get_scheduler_manager, register_default_jobs, default_scheduler_config
 
     scheduler = get_scheduler_manager()
+
+    if action == "install":
+        import shutil
+        import subprocess
+        huaqi_bin = shutil.which("huaqi") or "/usr/local/bin/huaqi"
+        import huaqi_src.cli.context as _ctx
+        log_dir = _ctx.DATA_DIR / "logs"
+        _PLIST_PATH.write_text(_get_plist_content(huaqi_bin, log_dir), encoding="utf-8")
+        result = subprocess.run(["launchctl", "load", "-w", str(_PLIST_PATH)], capture_output=True, text=True)
+        if result.returncode == 0:
+            console.print(f"[green]✅ Daemon 已安装并启动 (开机自启)[/green]")
+            console.print(f"[dim]plist: {_PLIST_PATH}[/dim]")
+            console.print(f"[dim]日志: {log_dir}/daemon.log[/dim]\n")
+        else:
+            console.print(f"[red]❌ launchctl load 失败: {result.stderr}[/red]")
+        return
+
+    if action == "uninstall":
+        import subprocess
+        if _PLIST_PATH.exists():
+            subprocess.run(["launchctl", "unload", "-w", str(_PLIST_PATH)], capture_output=True)
+            _PLIST_PATH.unlink()
+            console.print("[green]✅ Daemon 已卸载并移除开机自启[/green]\n")
+        else:
+            console.print("[yellow]⚠️ 未找到已安装的 plist[/yellow]\n")
+        return
 
     if action == "start":
         if scheduler.is_running():
