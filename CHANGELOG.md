@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### Changed
+- **三层架构完整迁移**：删除 `core/` 万能桶目录，所有业务模块按职责迁入 `layers/` 三层架构。
+  - `core/event.py` + `core/db_storage.py` → `layers/data/events/`
+  - `core/llm.py` → `layers/capabilities/llm/`
+  - `core/profile_models.py` + `core/profile_manager.py` + `core/profile_narrative.py` → `layers/data/profile/`
+  - `core/pattern_learning.py` → `layers/capabilities/pattern/`
+  - `core/proactive_care.py` → `layers/capabilities/care/`
+  - `core/flexible_store.py` → `layers/data/flexible/`
+  - `core/ui_utils.py` → `cli/ui_utils.py`
+  - `core/git_auto_commit.py` → `layers/data/git/`
+- **配置管理统一**：`core/config_*.py` 系列整合为 `config/manager.py` + `config/paths.py` + `config/hot_reload.py`，新增 `get_config_manager()` 工厂函数。
+- **测试目录规范化**：`tests/agent/` + `tests/cli/` + `tests/scheduler/` 整合入 `tests/unit/` 对应子目录，手动测试脚本移至 `scripts/`。
+- **旧顶层目录清除**：`collectors/`、`world/`、`memory/`、`learning/`、`pipeline/`、`reports/`、`people/` 已在上一轮迁入 `layers/`，`core/` 在本轮彻底清空删除。
+
+### Removed
+- `huaqi_src/core/` 目录（万能桶，违反架构规范，全部按职责迁移）
+- 根目录杂散脚本 `test_json.py`、`test_pty2.py`、`test_script.py`、`test_wrap.py`
+
+---
+
 ### Added
 - 学习助手新增 `mark_lesson_complete_tool`：标记当前章节为已完成，自动推进到下一章，已注册到 LangGraph ToolNode 和 `chat_nodes.py` bind_tools。
 - `LessonOutline` 新增 `lesson_type` 字段（默认 `"quiz"`，可选 `"coding"` / `"project"`），支持 YAML 序列化，旧数据向后兼容。
