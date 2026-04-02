@@ -11,14 +11,14 @@
 import time
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from huaqi_src.core.db_storage import LocalDBStorage
-from huaqi_src.core.event import Event
-from huaqi_src.core.config_manager import ConfigManager
+from huaqi_src.layers.data.events.store import LocalDBStorage
+from huaqi_src.layers.data.events.models import Event
+from huaqi_src.config.manager import get_config_manager
 
 class WeChatWebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == '/api/webhook/wechat':
-            config = ConfigManager()
+            config = get_config_manager()
             if not config.is_enabled("wechat"):
                 self.send_response(403)
                 self.end_headers()

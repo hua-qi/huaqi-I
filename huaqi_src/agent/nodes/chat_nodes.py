@@ -1,7 +1,6 @@
 """Chat Workflow 节点实现
 
 对话相关节点：意图识别、上下文构建、记忆检索、生成回复
-使用自适应用户理解系统，支持动态维度
 """
 
 import re
@@ -13,17 +12,12 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
 from ..state import AgentState, INTENT_CHAT, INTENT_DIARY, INTENT_SKILL, INTENT_CONTENT, INTENT_UNKNOWN
-from ...core.adaptive_understanding import get_adaptive_understanding
-from ...core.llm import get_llm_manager
-from ...core.user_profile import get_profile_manager
+from huaqi_src.layers.capabilities.llm.manager import get_llm_manager
+from huaqi_src.layers.data.profile.manager import get_profile_manager
 
 logger = logging.getLogger(__name__)
 
-# 缓存上次的分析结果
-_user_last_result: Optional[Any] = None
 
-
-# 简单的意图分类规则
 INTENT_PATTERNS = {
     INTENT_DIARY: [
         r".*?(写日记|查看日记|日记列表|搜索日记).*?",
@@ -41,43 +35,38 @@ INTENT_PATTERNS = {
 
 def classify_intent(state: AgentState) -> Dict[str, Any]:
     """意图识别节点
-    
+
     简单规则分类，后续可以替换为 LLM 分类
     """
     messages = state.get("messages", [])
     if not messages:
         return {"intent": INTENT_CHAT, "intent_confidence": 1.0}
-    
-    # 获取最后一条用户消息
+
     last_message = None
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             last_message = msg.content
             break
-    
+
     if not last_message:
         return {"intent": INTENT_CHAT, "intent_confidence": 1.0}
-    
-    # 规则匹配
+
     text = last_message.lower()
     for intent, patterns in INTENT_PATTERNS.items():
         for pattern in patterns:
             if re.match(pattern, text, re.IGNORECASE):
                 return {"intent": intent, "intent_confidence": 0.8}
-    
-    # 默认意图
+
     return {"intent": INTENT_CHAT, "intent_confidence": 0.9}
 
 
 def build_context(state: AgentState) -> Dict[str, Any]:
     """构建上下文节点
 
-    组装系统提示词、人格画像、记忆、用户理解洞察等
+    组装系统提示词、人格画像、记忆、用户画像等
     """
-    # 获取人格画像上下文
     personality_context = state.get("personality_context", "")
 
-    # 获取用户画像上下文
     user_profile_context = ""
     try:
         profile_manager = get_profile_manager()
@@ -85,25 +74,11 @@ def build_context(state: AgentState) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # 获取自适应理解上下文
-    user_insight_context = ""
-    
-    try:
-        adaptive = get_adaptive_understanding()
-        user_insight_context = adaptive.get_context_for_response(
-            current_result=_user_last_result,
-        )
-    except Exception:
-        pass
-
-    # 构建系统提示词
     system_prompt = build_system_prompt(
         personality_context,
         user_profile_context,
-        user_insight_context,
     )
 
-    # 更新 workflow_data
     workflow_data = state.get("workflow_data", {})
     workflow_data["system_prompt"] = system_prompt
 
@@ -113,7 +88,6 @@ def build_context(state: AgentState) -> Dict[str, Any]:
 def build_system_prompt(
     personality_context: Optional[str] = None,
     user_profile_context: Optional[str] = None,
-    user_insight_context: Optional[str] = None,
 ) -> str:
     """构建系统提示词"""
     base_prompt = """你是 Huaqi (花旗)，一个个人 AI 伴侣系统。
@@ -136,20 +110,15 @@ def build_system_prompt(
     if personality_context:
         base_prompt += f"\n\n{personality_context}\n"
 
-    # 添加用户画像信息
     if user_profile_context:
         base_prompt += f"\n{user_profile_context}\n"
-
-    # 添加用户理解洞察
-    if user_insight_context:
-        base_prompt += f"\n{user_insight_context}\n"
 
     return base_prompt
 
 
 def extract_user_info(state: AgentState) -> Dict[str, Any]:
     """从用户消息中提取用户信息节点
-    
+
     检测用户自我介绍并更新画像
     """
     messages = state.get("messages", [])
@@ -183,51 +152,6 @@ def extract_user_info(state: AgentState) -> Dict[str, Any]:
     return {}
 
 
-def analyze_user_understanding(state: AgentState) -> Dict[str, Any]:
-    """分析用户理解节点
-    
-    使用自适应用户理解系统分析消息，支持动态维度发现
-    """
-    messages = state.get("messages", [])
-    conversation_id = state.get("conversation_id", "")
-
-    # 获取最后一条用户消息
-    last_message = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            last_message = msg.content
-            break
-
-    if not last_message:
-        return {"user_insight": None}
-
-    try:
-        # 获取自适应理解系统
-        adaptive = get_adaptive_understanding()
-
-        # 分析消息
-        result = asyncio.run(adaptive.analyze(
-            message=last_message,
-            conversation_id=conversation_id,
-            context={
-                "history_turns": len(messages),
-            }
-        ))
-
-        # 更新缓存
-        global _user_last_result
-        _user_last_result = result
-
-        return {
-            "user_insight": result.to_dict(),
-            "proposed_dimensions": result.proposed_dimensions,
-        }
-
-    except Exception as e:
-        # 分析失败不影响主流程
-        return {"user_insight": None, "insight_error": str(e)}
-
-
 def retrieve_memories(state: AgentState) -> Dict[str, Any]:
     """检索记忆节点
 
@@ -248,9 +172,8 @@ def retrieve_memories(state: AgentState) -> Dict[str, Any]:
 
     memories: List[str] = []
 
-    # --- 来源 1: Chroma 向量库 ---
     try:
-        from ...memory.vector import get_hybrid_search
+        from huaqi_src.layers.data.memory.vector import get_hybrid_search
 
         search = get_hybrid_search(use_vector=True, use_bm25=True)
         results = search.search(query, top_k=3)
@@ -262,11 +185,10 @@ def retrieve_memories(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.debug(f"向量库检索失败: {e}")
 
-    # --- 来源 2: 今天的 Markdown 文件扫描 ---
     try:
         from datetime import date as _date
-        from ...core.config_paths import get_conversations_dir
-        from ...memory.storage.markdown_store import MarkdownMemoryStore
+        from ...config.paths import get_conversations_dir
+        from huaqi_src.layers.data.memory.storage.markdown_store import MarkdownMemoryStore
 
         conversations_dir = get_conversations_dir()
 
@@ -307,7 +229,6 @@ def retrieve_memories(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.debug(f"Markdown 今日记忆扫描失败: {e}")
 
-    # 去重（按前 60 字符粗略去重）
     seen: set = set()
     unique_memories: List[str] = []
     for m in memories:
@@ -360,7 +281,7 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
             max_tokens=cfg.max_tokens,
             streaming=True,
         )
-        
+
         from ..tools import (
             search_diary_tool,
             search_events_tool,
@@ -382,18 +303,17 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
         chat_model_with_tools = chat_model.bind_tools(tools)
 
         response_msg = None
-        # 使用 astream 强制流式输出，遍历的同时 LangGraph / Langchain 会自动向上发出 on_chat_model_stream 事件
         async for chunk in chat_model_with_tools.astream(full_messages, config=config):
             if response_msg is None:
                 response_msg = chunk
             else:
                 response_msg += chunk
-        
+
         return {
             "response": response_msg.content,
             "messages": [response_msg],
         }
-        
+
     except Exception as e:
         error_msg = f"生成回复失败: {str(e)}"
         return {
@@ -425,14 +345,14 @@ def save_conversation(state: AgentState) -> Dict[str, Any]:
 
     try:
         from datetime import datetime as dt
-        from ...core.config_paths import get_conversations_dir
-        from ...memory.storage.markdown_store import MarkdownMemoryStore
+        from ...config.paths import get_conversations_dir
+        from huaqi_src.layers.data.memory.storage.markdown_store import MarkdownMemoryStore
 
         now = dt.now()
         session_id = state.get("workflow_data", {}).get("thread_id", now.strftime("%Y%m%d_%H%M%S"))
 
         memory_store = MarkdownMemoryStore(get_conversations_dir())
-        filepath = memory_store.save_conversation(
+        memory_store.save_conversation(
             session_id=session_id,
             timestamp=now,
             turns=turns,
@@ -450,7 +370,7 @@ def save_conversation(state: AgentState) -> Dict[str, Any]:
 def _index_to_chroma(session_id: str, turns: List[Dict[str, Any]], timestamp) -> None:
     """将对话轮次写入 Chroma 向量库"""
     try:
-        from ...memory.vector import get_chroma_client, get_embedding_service
+        from huaqi_src.layers.data.memory.vector import get_chroma_client, get_embedding_service
 
         chroma = get_chroma_client()
         embedder = get_embedding_service()
@@ -478,9 +398,8 @@ def _index_to_chroma(session_id: str, turns: List[Dict[str, Any]], timestamp) ->
 
 def handle_error(state: AgentState) -> Dict[str, Any]:
     """错误处理节点"""
-    error = state.get("error")
     retry_count = state.get("retry_count", 0)
-    
+
     if retry_count < 3:
         return {
             "retry_count": retry_count + 1,
@@ -495,5 +414,4 @@ def handle_error(state: AgentState) -> Dict[str, Any]:
         }
 
 
-# 兼容旧接口
-analyze_user_message = analyze_user_understanding
+analyze_user_message = classify_intent

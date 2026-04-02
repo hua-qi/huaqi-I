@@ -41,7 +41,7 @@ class SchedulerManager:
             timezone: 时区
         """
         if db_path is None:
-            from ..core.config_paths import get_scheduler_db_path
+            from ..config.paths import get_scheduler_db_path
             db_path = get_scheduler_db_path()
         
         self.db_path = db_path

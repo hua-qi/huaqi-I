@@ -22,7 +22,7 @@ def personality_update(
     """分析日记并生成画像更新提案"""
     ensure_initialized()
 
-    from huaqi_src.core.personality_updater import PersonalityUpdater
+    from huaqi_src.layers.capabilities.personality import PersonalityUpdater
 
     updater = PersonalityUpdater()
     proposal = updater.analyze_recent(days=days)
@@ -48,7 +48,7 @@ def personality_review(
     """查看或审核画像更新提案"""
     ensure_initialized()
 
-    from huaqi_src.core.personality_updater import PersonalityUpdater
+    from huaqi_src.layers.capabilities.personality import PersonalityUpdater
 
     updater = PersonalityUpdater()
 
@@ -102,7 +102,7 @@ def personality_show():
     import huaqi_src.cli.context as ctx
     ensure_initialized()
 
-    from huaqi_src.core.personality_simple import PersonalityEngine
+    from huaqi_src.layers.capabilities.personality import PersonalityEngine
 
     engine = PersonalityEngine(ctx.DATA_DIR / "memory")
     profile = engine.profile

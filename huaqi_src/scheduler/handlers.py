@@ -71,7 +71,7 @@ class TaskHandlers:
         
         定期分析日记，生成更新提案（需人工确认）
         """
-        from ..core.personality_updater import PersonalityUpdater
+        from ..layers.capabilities.personality import PersonalityUpdater
         
         print(f"[Task] 人格画像更新 - {datetime.now()}")
         

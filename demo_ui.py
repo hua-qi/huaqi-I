@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from rich.console import Console
-from huaqi_src.core.ui_utils import HuaqiUI, get_ui, HuaqiTheme
+from huaqi_src.cli.ui_utils import HuaqiUI, get_ui, HuaqiTheme
 
 console = Console()
 

@@ -22,7 +22,7 @@ def pipeline_show():
     """显示流水线状态（草稿数量、待审核任务）"""
     ensure_initialized()
 
-    from huaqi_src.pipeline.platforms import XiaoHongShuPublisher
+    from huaqi_src.layers.capabilities.pipeline.platforms import XiaoHongShuPublisher
     from huaqi_src.scheduler.pipeline_job import PipelineJobManager
 
     console.print("\n[bold cyan]🚀 流水线状态[/bold cyan]\n")
@@ -46,14 +46,14 @@ def pipeline_run(
     """执行内容流水线"""
     ensure_initialized()
 
-    from huaqi_src.pipeline import create_default_pipeline
+    from huaqi_src.layers.capabilities.pipeline import create_default_pipeline
 
     console.print("\n[bold cyan]🚀 启动内容流水线[/bold cyan]\n")
 
     async def _run():
         pipeline = create_default_pipeline()
         if source != "all":
-            from huaqi_src.pipeline.sources import XMockSource, RSSMockSource
+            from huaqi_src.layers.capabilities.pipeline.sources import XMockSource, RSSMockSource
             pipeline.sources = [
                 s for s in pipeline.sources
                 if (source == "x" and isinstance(s, XMockSource)) or
@@ -93,7 +93,7 @@ def pipeline_drafts(
     """查看已生成的草稿"""
     ensure_initialized()
 
-    from huaqi_src.pipeline.platforms import XiaoHongShuPublisher
+    from huaqi_src.layers.capabilities.pipeline.platforms import XiaoHongShuPublisher
 
     publisher = XiaoHongShuPublisher()
     drafts = publisher.list_drafts()

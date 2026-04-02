@@ -9,8 +9,8 @@ study_app = typer.Typer(name="study", help="学习助手 - 系统性学习技术
 
 
 def _get_store():
-    from huaqi_src.core.config_paths import get_learning_dir
-    from huaqi_src.learning.progress_store import LearningProgressStore
+    from huaqi_src.config.paths import get_learning_dir
+    from huaqi_src.layers.capabilities.learning.progress_store import LearningProgressStore
 
     try:
         return LearningProgressStore(get_learning_dir())
@@ -68,7 +68,7 @@ def _cmd_list():
 
 
 def _cmd_reset(skill: str):
-    from huaqi_src.learning.progress_store import slugify
+    from huaqi_src.layers.capabilities.learning.progress_store import slugify
     import shutil
 
     store = _get_store()
@@ -83,7 +83,7 @@ def _cmd_reset(skill: str):
 
 
 def _cmd_start(skill: str):
-    from huaqi_src.learning.learning_tools import start_lesson_tool
+    from huaqi_src.layers.capabilities.learning.learning_tools import start_lesson_tool
 
     console.print(f"\n[bold cyan]📚 启动学习：{skill}[/bold cyan]\n")
 

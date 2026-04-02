@@ -1,5 +1,5 @@
 import typer
-from huaqi_src.collectors.cli_chat_watcher import CLIChatWatcher
+from huaqi_src.layers.data.collectors.cli_chat_watcher import CLIChatWatcher
 
 app = typer.Typer(name="collector", help="数据采集器管理")
 
@@ -7,10 +7,10 @@ app = typer.Typer(name="collector", help="数据采集器管理")
 @app.command("status")
 def status():
     """查看数据采集器状态"""
-    from huaqi_src.core.config_manager import ConfigManager
-    from huaqi_src.core.config_paths import get_data_dir
+    from huaqi_src.config.manager import get_config_manager
+    from huaqi_src.config.paths import get_data_dir
 
-    cfg = ConfigManager()
+    cfg = get_config_manager()
     cli_chat_enabled = cfg.is_enabled("cli_chat")
 
     data_dir = get_data_dir()

@@ -7,7 +7,7 @@ app = typer.Typer(name="inbox", help="管理待处理的导入文件")
 @app.command("sync")
 def sync():
     """处理 inbox 中所有待导入的文件"""
-    from huaqi_src.collectors.inbox_processor import InboxProcessor
+    from huaqi_src.layers.data.collectors.inbox_processor import InboxProcessor
 
     processor = InboxProcessor()
     docs = processor.sync()
@@ -24,7 +24,7 @@ def sync():
 @app.command("status")
 def status():
     """查看 inbox 中待处理和已处理的文件"""
-    from huaqi_src.core.config_paths import get_inbox_work_docs_dir, get_work_docs_dir, is_data_dir_set
+    from huaqi_src.config.paths import get_inbox_work_docs_dir, get_work_docs_dir, is_data_dir_set
 
     if not is_data_dir_set():
         typer.echo("错误：数据目录未设置。", err=True)

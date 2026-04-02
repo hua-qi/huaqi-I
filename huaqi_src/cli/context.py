@@ -9,14 +9,14 @@ from typing import Optional
 
 from rich.console import Console
 
-from huaqi_src.core.config_simple import init_config_manager, ConfigManager
-from huaqi_src.core.personality_simple import PersonalityEngine
-from huaqi_src.core.hooks_simple import HookManager
-from huaqi_src.core.growth_simple import GrowthTracker
-from huaqi_src.core.diary_simple import DiaryStore
-from huaqi_src.core.git_auto_commit import GitAutoCommit
-from huaqi_src.core.llm import LLMConfig, Message, LLMManager
-from huaqi_src.memory.storage.markdown_store import MarkdownMemoryStore
+from huaqi_src.config.manager import init_config_manager, ConfigManager
+from huaqi_src.layers.capabilities.personality import PersonalityEngine
+from huaqi_src.layers.capabilities.hooks import HookManager
+from huaqi_src.layers.capabilities.growth import GrowthTracker
+from huaqi_src.layers.data.diary import DiaryStore
+from huaqi_src.layers.data.git.auto_commit import GitAutoCommit
+from huaqi_src.layers.capabilities.llm.manager import LLMConfig, Message, LLMManager
+from huaqi_src.layers.data.memory.storage.markdown_store import MarkdownMemoryStore
 
 console = Console()
 
@@ -37,7 +37,7 @@ def ensure_initialized():
     global _config, _personality, _hooks, _growth, _diary, _memory_store, _git
     global DATA_DIR, MEMORY_DIR
 
-    from huaqi_src.core.config_paths import require_data_dir, get_memory_dir
+    from huaqi_src.config.paths import require_data_dir, get_memory_dir
 
     DATA_DIR = require_data_dir()
     MEMORY_DIR = get_memory_dir()

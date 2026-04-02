@@ -46,7 +46,7 @@ def system_show():
 
     console.print(f"  数据目录: [cyan]{ctx.DATA_DIR}[/cyan]")
 
-    from huaqi_src.core.config_paths import get_memory_dir
+    from huaqi_src.config.paths import get_memory_dir
     memory_dir = get_memory_dir()
     memory_count = len(list(memory_dir.glob("*.md"))) if memory_dir.exists() else 0
     console.print(f"  记忆文件: [cyan]{memory_count}[/cyan] 条")
@@ -106,7 +106,7 @@ def system_hot_reload(
     import huaqi_src.cli.context as ctx
     ensure_initialized()
 
-    from huaqi_src.core.config_hot_reload import get_hot_reload, init_hot_reload
+    from huaqi_src.config.hot_reload import get_hot_reload, init_hot_reload
 
     if action == "start":
         hot_reload = get_hot_reload()
@@ -141,7 +141,7 @@ def system_backup():
     backup_dir = ctx.DATA_DIR / "backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    from huaqi_src.core.config_paths import get_memory_dir
+    from huaqi_src.config.paths import get_memory_dir
     memory_dir = get_memory_dir()
 
     if memory_dir.exists():

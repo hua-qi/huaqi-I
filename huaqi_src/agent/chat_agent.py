@@ -23,7 +23,7 @@ _SESSIONS_INDEX_FILENAME = "sessions_index.yaml"
 
 
 def _get_sessions_index_path() -> Path:
-    from ..core.config_paths import require_data_dir
+    from ..config.paths import require_data_dir
     return require_data_dir() / _SESSIONS_INDEX_FILENAME
 
 
@@ -139,7 +139,7 @@ class ChatAgent:
         try:
             import aiosqlite
             from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-            from ..core.config_paths import require_data_dir
+            from ..config.paths import require_data_dir
             db_path = require_data_dir() / "checkpoints.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
             async with AsyncSqliteSaver.from_conn_string(str(db_path)) as checkpointer:
@@ -202,7 +202,7 @@ class ChatAgent:
         
         try:
             from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-            from ..core.config_paths import require_data_dir
+            from ..config.paths import require_data_dir
             db_path = require_data_dir() / "checkpoints.db"
             
             async with AsyncSqliteSaver.from_conn_string(str(db_path)) as checkpointer:

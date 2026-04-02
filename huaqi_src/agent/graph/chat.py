@@ -28,7 +28,6 @@ from ..nodes.chat_nodes import (
     classify_intent,
     build_context,
     retrieve_memories,
-    analyze_user_understanding,
     extract_user_info,
     generate_response,
     save_conversation,
@@ -62,7 +61,6 @@ def build_chat_graph() -> StateGraph:
     workflow.add_node("intent_classifier", classify_intent)
     workflow.add_node("context_builder", build_context)
     workflow.add_node("memory_retriever", retrieve_memories)
-    workflow.add_node("user_analyzer", analyze_user_understanding)
     workflow.add_node("extract_user_info", extract_user_info)
     workflow.add_node("chat_response", generate_response)
     
@@ -107,8 +105,7 @@ def build_chat_graph() -> StateGraph:
     
     # 对话流程
     workflow.add_edge("context_builder", "memory_retriever")
-    workflow.add_edge("memory_retriever", "user_analyzer")
-    workflow.add_edge("user_analyzer", "chat_response")
+    workflow.add_edge("memory_retriever", "chat_response")
     
     def route_by_interrupt(state: AgentState) -> str:
         if state.get("interrupt_requested"):
@@ -154,7 +151,7 @@ def compile_chat_graph(checkpoints_db_path: Path = None):
     try:
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
         if checkpoints_db_path is None:
-            from ...core.config_paths import require_data_dir
+            from ...config.paths import require_data_dir
             checkpoints_db_path = require_data_dir() / "checkpoints.db"
         checkpoints_db_path.parent.mkdir(parents=True, exist_ok=True)
         checkpointer = AsyncSqliteSaver.from_conn_string(str(checkpoints_db_path))

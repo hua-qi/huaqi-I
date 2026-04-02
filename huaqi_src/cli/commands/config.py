@@ -169,7 +169,7 @@ def config_set(
 
 
 def _wizard_set_llm(ctx):
-    from huaqi_src.core.config_simple import LLMProviderConfig
+    from huaqi_src.config.manager import LLMProviderConfig
 
     console.print("\n[bold]LLM 配置向导[/bold]")
 
@@ -275,7 +275,7 @@ def _wizard_set_data_dir(ctx):
                     console.print(f"   ✅  {dir_name}")
         console.print(f"\n[green]✅ 数据迁移完成 ({migrated_count} 个目录)[/green]")
 
-    from huaqi_src.core.config_simple import ConfigManager
+    from huaqi_src.config.manager import ConfigManager
     _new_config = ConfigManager(path)
     _new_config.set("data_dir", str(path))
 
@@ -283,7 +283,7 @@ def _wizard_set_data_dir(ctx):
     ctx.MEMORY_DIR = path / "memory"
     ctx._config = _new_config
 
-    from huaqi_src.core.config_paths import set_data_dir
+    from huaqi_src.config.paths import set_data_dir
     set_data_dir(path)
 
     console.print(f"\n[green]✅ 数据目录已设置为: {path}[/green]\n")

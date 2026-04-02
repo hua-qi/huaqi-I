@@ -23,8 +23,8 @@ from huaqi_src.cli.context import (
     DATA_DIR,
 )
 from huaqi_src.cli.ui import prompt_input, clear_screen
-from huaqi_src.core.llm import LLMConfig, Message, LLMManager
-from huaqi_src.core.ui_utils import get_ui, HuaqiTheme, BubbleLayout
+from huaqi_src.layers.capabilities.llm.manager import LLMConfig, Message, LLMManager
+from huaqi_src.cli.ui_utils import get_ui, HuaqiTheme, BubbleLayout
 
 
 def _build_system_prompt(include_diary: bool = True) -> str:
@@ -46,7 +46,7 @@ def _build_system_prompt(include_diary: bool = True) -> str:
 
     user_profile_context = ""
     try:
-        from huaqi_src.core.user_profile import get_profile_manager
+        from huaqi_src.layers.data.profile.manager import get_profile_manager
         profile_manager = get_profile_manager()
         profile_summary = profile_manager.get_system_prompt_addition()
         if profile_summary:
@@ -151,7 +151,7 @@ def _generate_streaming_response(
 
 def _handle_report_command(parts: list):
     """处理报告命令"""
-    from huaqi_src.core.pattern_learning import get_pattern_engine
+    from huaqi_src.layers.capabilities.pattern.engine import get_pattern_engine
 
     engine = get_pattern_engine()
 
@@ -196,7 +196,7 @@ def _handle_report_command(parts: list):
 
 def _handle_care_command(parts: list):
     """处理关怀命令"""
-    from huaqi_src.core.proactive_care import get_care_engine
+    from huaqi_src.layers.capabilities.care.engine import get_care_engine
 
     engine = get_care_engine()
 
@@ -750,8 +750,8 @@ def run_langgraph_chat(thread_id: str = None):
 
                 # 将 CLI 交互记录写入 SQLite
                 try:
-                    from huaqi_src.core.db_storage import LocalDBStorage
-                    from huaqi_src.core.event import Event
+                    from huaqi_src.layers.data.events.store import LocalDBStorage
+                    from huaqi_src.layers.data.events.models import Event
                     import time
                     db = LocalDBStorage()
                     db.insert_event(Event(
@@ -807,7 +807,7 @@ def chat_mode():
     has_report = False
     pending_report_text = None
     try:
-        from huaqi_src.core.pattern_learning import get_pattern_engine
+        from huaqi_src.layers.capabilities.pattern.engine import get_pattern_engine
         pattern_engine = get_pattern_engine()
         latest_report = pattern_engine.get_latest_weekly_report()
         now = datetime.now()
@@ -821,34 +821,9 @@ def chat_mode():
     except Exception:
         pass
 
-    try:
-        from huaqi_src.core.user_profile import get_data_extractor
-        extractor = get_data_extractor()
-        if not extractor.is_extracting() and extractor.get_result() is None:
-            _llm_for_extraction = LLMManager()
-            config = ctx._config.load_config()
-            provider_name = config.llm_default_provider
-            if provider_name in config.llm_providers:
-                provider_config = config.llm_providers[provider_name]
-                api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
-                llm_config = LLMConfig(
-                    provider=provider_config.name,
-                    model=provider_config.model,
-                    api_key=api_key,
-                    api_base=provider_config.api_base,
-                    temperature=0.3,
-                    max_tokens=1000,
-                    timeout=30,
-                )
-                _llm_for_extraction.add_config(llm_config)
-                _llm_for_extraction.set_active(provider_config.name)
-                extractor.start_extraction(_llm_for_extraction)
-    except Exception:
-        pass
-
     pending_care = None
     try:
-        from huaqi_src.core.proactive_care import get_care_engine
+        from huaqi_src.layers.capabilities.care.engine import get_care_engine
         care_engine = get_care_engine()
         care_record = care_engine.check_and_trigger()
         if care_record:

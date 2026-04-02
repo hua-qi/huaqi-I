@@ -21,7 +21,8 @@ def profile_show():
     """显示用户画像（优先展示 LLM 叙事描述）"""
     ensure_initialized()
 
-    from huaqi_src.core.user_profile import get_profile_manager, get_narrative_manager
+    from huaqi_src.layers.data.profile.manager import get_profile_manager
+    from huaqi_src.layers.data.profile.narrative import get_narrative_manager
 
     console.print("\n[bold magenta]👤 用户画像[/bold magenta]\n")
 
@@ -105,7 +106,7 @@ def profile_set(
     """设置用户画像字段"""
     ensure_initialized()
 
-    from huaqi_src.core.user_profile import get_profile_manager
+    from huaqi_src.layers.data.profile.manager import get_profile_manager
 
     profile_manager = get_profile_manager()
 

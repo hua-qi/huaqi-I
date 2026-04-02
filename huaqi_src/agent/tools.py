@@ -1,13 +1,13 @@
 from langchain_core.tools import tool
-from huaqi_src.core.diary_simple import DiaryStore
-from huaqi_src.core.config_paths import (
+from huaqi_src.layers.data.diary import DiaryStore
+from huaqi_src.config.paths import (
     get_memory_dir,
     get_work_docs_dir,
     get_cli_chats_dir,
     get_conversations_dir,
 )
 import datetime
-from huaqi_src.core.db_storage import LocalDBStorage
+from huaqi_src.layers.data.events.store import LocalDBStorage
 
 @tool
 def search_diary_tool(query: str) -> str:
@@ -68,7 +68,7 @@ def search_events_tool(query: str) -> str:
 @tool
 def search_worldnews_tool(query: str) -> str:
     """搜索最近的世界新闻和热点事件摘要。当用户询问最新世界动态、新闻或时事时使用。"""
-    from huaqi_src.world.storage import WorldNewsStorage
+    from huaqi_src.layers.data.world.storage import WorldNewsStorage
 
     try:
         storage = WorldNewsStorage()
@@ -85,7 +85,7 @@ def search_worldnews_tool(query: str) -> str:
 @tool
 def search_person_tool(name: str) -> str:
     """查询某人的画像和互动历史。当用户询问某个人的信息、与某人的关系、某人的性格特点时使用。"""
-    from huaqi_src.people.graph import PeopleGraph
+    from huaqi_src.layers.growth.telos.dimensions.people.graph import PeopleGraph
     try:
         graph = PeopleGraph()
     except RuntimeError:
@@ -144,7 +144,7 @@ def search_cli_chats_tool(query: str) -> str:
 @tool
 def get_relationship_map_tool() -> str:
     """获取用户的关系网络全图，按亲密度排序列出所有关系人。当用户询问「我认识哪些人」「我的社交圈」时使用。"""
-    from huaqi_src.people.graph import PeopleGraph
+    from huaqi_src.layers.growth.telos.dimensions.people.graph import PeopleGraph
     try:
         graph = PeopleGraph()
     except RuntimeError:
@@ -175,8 +175,8 @@ def search_huaqi_chats_tool(query: str) -> str:
     支持自然语言查询，也支持「今天」「昨天」「上周」等时间描述。
     """
     from pathlib import Path
-    from huaqi_src.core.config_paths import get_data_dir
-    from huaqi_src.memory.storage.markdown_store import MarkdownMemoryStore
+    from huaqi_src.config.paths import get_data_dir
+    from huaqi_src.layers.data.memory.storage.markdown_store import MarkdownMemoryStore
 
     data_dir = get_data_dir()
     if data_dir is None:
@@ -190,7 +190,7 @@ def search_huaqi_chats_tool(query: str) -> str:
 
     vector_results = []
     try:
-        from huaqi_src.memory.vector import get_hybrid_search
+        from huaqi_src.layers.data.memory.vector import get_hybrid_search
         search = get_hybrid_search(use_vector=True, use_bm25=True)
         hits = search.search(query, top_k=3, doc_type="conversation")
         for h in hits:
@@ -225,7 +225,7 @@ def search_huaqi_chats_tool(query: str) -> str:
 
     return "找到以下与 Huaqi 的历史对话：\n\n" + "\n---\n".join(all_results[:5])
 
-from huaqi_src.learning.learning_tools import (
+from huaqi_src.layers.capabilities.learning.learning_tools import (
     get_learning_progress_tool,
     get_course_outline_tool,
     start_lesson_tool,

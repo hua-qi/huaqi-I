@@ -1,9 +1,13 @@
+from typing import Any
+
+from huaqi_src.layers.data.raw_signal.models import RawSignalFilter
+from huaqi_src.layers.data.raw_signal.store import RawSignalStore
 from huaqi_src.scheduler.manager import SchedulerManager
-from huaqi_src.core.config_manager import ConfigManager
+from huaqi_src.config.manager import ConfigManager
 
 
 def _run_morning_brief():
-    from huaqi_src.reports.morning_brief import MorningBriefAgent
+    from huaqi_src.layers.capabilities.reports.morning_brief import MorningBriefAgent
     try:
         agent = MorningBriefAgent()
         agent.run()
@@ -12,7 +16,7 @@ def _run_morning_brief():
 
 
 def _run_daily_report():
-    from huaqi_src.reports.daily_report import DailyReportAgent
+    from huaqi_src.layers.capabilities.reports.daily_report import DailyReportAgent
     try:
         agent = DailyReportAgent()
         agent.run()
@@ -21,7 +25,7 @@ def _run_daily_report():
 
 
 def _run_weekly_report():
-    from huaqi_src.reports.weekly_report import WeeklyReportAgent
+    from huaqi_src.layers.capabilities.reports.weekly_report import WeeklyReportAgent
     try:
         agent = WeeklyReportAgent()
         agent.run()
@@ -30,7 +34,7 @@ def _run_weekly_report():
 
 
 def _run_quarterly_report():
-    from huaqi_src.reports.quarterly_report import QuarterlyReportAgent
+    from huaqi_src.layers.capabilities.reports.quarterly_report import QuarterlyReportAgent
     try:
         agent = QuarterlyReportAgent()
         agent.run()
@@ -39,8 +43,8 @@ def _run_quarterly_report():
 
 
 def _get_learning_store():
-    from huaqi_src.core.config_paths import get_learning_dir
-    from huaqi_src.learning.progress_store import LearningProgressStore
+    from huaqi_src.config.paths import get_learning_dir
+    from huaqi_src.layers.capabilities.learning.progress_store import LearningProgressStore
 
     try:
         return LearningProgressStore(get_learning_dir())
@@ -49,7 +53,7 @@ def _get_learning_store():
 
 
 def _run_learning_push():
-    from huaqi_src.learning.course_generator import CourseGenerator
+    from huaqi_src.layers.capabilities.learning.course_generator import CourseGenerator
     try:
         store = _get_learning_store()
         if store is None:
@@ -120,3 +124,44 @@ def register_default_jobs(manager: SchedulerManager):
         func=_run_learning_push,
         cron="0 21 * * *",
     )
+
+
+
+def process_pending_signals_job(
+    signal_store: RawSignalStore,
+    pipeline: Any,
+    user_id: str,
+    batch_size: int = 50,
+) -> None:
+    pending = signal_store.query(
+        RawSignalFilter(user_id=user_id, processed=0, limit=batch_size)
+    )
+    for signal in pending:
+        try:
+            pipeline.process(signal)
+        except Exception:
+            continue
+
+
+def vectorize_pending_signals_job(
+    signal_store: RawSignalStore,
+    vector_adapter: Any,
+    user_id: str,
+    batch_size: int = 50,
+) -> None:
+    pending = signal_store.query(
+        RawSignalFilter(user_id=user_id, vectorized=0, limit=batch_size)
+    )
+    for signal in pending:
+        try:
+            from huaqi_src.layers.data.memory.models import VectorDocument
+            doc = VectorDocument(
+                id=signal.id,
+                user_id=signal.user_id,
+                content=signal.content,
+                metadata={"source_type": signal.source_type.value},
+            )
+            vector_adapter.upsert(doc)
+            signal_store.mark_vectorized(signal.id)
+        except Exception:
+            continue

@@ -22,8 +22,8 @@ def proxy_run(ctx: typer.Context):
         console.print("[red]请提供要执行的命令，例如: huaqi proxy run codeflicker[/red]")
         raise typer.Exit(1)
         
-    from huaqi_src.core.db_storage import LocalDBStorage
-    from huaqi_src.core.event import Event
+    from huaqi_src.layers.data.events.store import LocalDBStorage
+    from huaqi_src.layers.data.events.models import Event
     
     db = LocalDBStorage()
     

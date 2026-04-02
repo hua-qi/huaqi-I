@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from enum import Enum
 
 from .manager import get_scheduler_manager
-from ..pipeline import create_default_pipeline, ContentItem
+from huaqi_src.layers.capabilities.pipeline import create_default_pipeline, ContentItem
 
 
 class ReviewStatus(Enum):
@@ -64,7 +64,7 @@ class PipelineJobManager:
     
     def __init__(self, pending_dir: Path = None):
         if pending_dir is None:
-            from ..core.config_paths import get_pending_reviews_dir
+            from ..config.paths import get_pending_reviews_dir
             pending_dir = get_pending_reviews_dir()
         self.pending_dir = pending_dir
         self.pending_dir.mkdir(parents=True, exist_ok=True)
@@ -110,7 +110,7 @@ class PipelineJobManager:
     
     async def _create_pending_reviews(self, stats: Dict[str, Any]):
         """从草稿创建待审核项"""
-        from ..pipeline.platforms import XiaoHongShuPublisher
+        from huaqi_src.layers.capabilities.pipeline.platforms import XiaoHongShuPublisher
         
         publisher = XiaoHongShuPublisher()
         drafts = publisher.list_drafts()
@@ -256,7 +256,7 @@ class PipelineJobManager:
     
     async def publish_approved(self, task_id: str) -> int:
         """发布已通过审核的内容"""
-        from ..pipeline.platforms import XiaoHongShuPublisher
+        from huaqi_src.layers.capabilities.pipeline.platforms import XiaoHongShuPublisher
         
         pending_file = self.pending_dir / f"{task_id}.json"
         

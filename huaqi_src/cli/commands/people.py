@@ -4,8 +4,8 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 
-from huaqi_src.people.graph import PeopleGraph
-from huaqi_src.people.models import Person
+from huaqi_src.layers.growth.telos.dimensions.people.graph import PeopleGraph
+from huaqi_src.layers.growth.telos.dimensions.people.models import Person
 
 people_app = typer.Typer(name="people", help="管理人物关系网络")
 console = Console()

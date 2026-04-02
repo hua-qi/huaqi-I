@@ -119,7 +119,7 @@ def main(
     ctx: typer.Context,
 ):
     """Huaqi - 个人 AI 同伴系统"""
-    from huaqi_src.core.config_paths import is_data_dir_set, get_data_dir
+    from huaqi_src.config.paths import is_data_dir_set, get_data_dir
     import huaqi_src.cli.context as _ctx
 
     if not is_data_dir_set():
@@ -130,7 +130,7 @@ def main(
         _wizard_set_data_dir(_ctx)
 
     _ctx.DATA_DIR = get_data_dir()
-    from huaqi_src.core.config_paths import get_memory_dir
+    from huaqi_src.config.paths import get_memory_dir
     _ctx.MEMORY_DIR = get_memory_dir() if is_data_dir_set() else None
 
     if is_data_dir_set() and ctx.invoked_subcommand == "daemon":
