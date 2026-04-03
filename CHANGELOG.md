@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Added
+- **报告查看与生成系统**：新增统一的 `ReportManager` 用于处理所有报告的检索与实时生成。
+- 新增 `huaqi report` 顶级 CLI 命令组，支持 `morning`, `daily`, `weekly` 子命令，可附加 `[date]` 及 `--force` 选项强制重新生成。
+- 聊天内 `/report` 指令扩充，现支持 `/report [morning|daily|weekly|quarterly|insights] [date]` 实时获取或生成对应报告。
+
 ### Changed
 - **三层架构完整迁移**：删除 `core/` 万能桶目录，所有业务模块按职责迁入 `layers/` 三层架构。
   - `core/event.py` + `core/db_storage.py` → `layers/data/events/`
@@ -137,8 +142,8 @@
 - `memory_retriever` 激活 Embedding 向量检索（`bge-small-zh` + BM25 混合）
 - 新增 `docs/features/langgraph-agent.md` LangGraph Agent 功能文档
 - 新增 `docs/features/conversation-context.md` 对话上下文机制文档
-- 新增 `spec/decisions/ADR-004-langgraph-default-mode.md` 架构决策记录
-- 新增 `spec/decisions/ADR-003-memory-retrieval-strategy.md` 记忆检索策略决策
+- 新增 `docs/design/adr/ADR-004-langgraph-default-mode.md` 架构决策记录
+- 新增 `docs/design/adr/ADR-003-memory-retrieval-strategy.md` 记忆检索策略决策
 - 新增 `docs/design/memory-retrieval-strategy.md` 记忆检索方案分析文档
 - 新增 `BubbleLayout` 类（`huaqi_src/core/ui_utils.py`）：无边框气泡对话布局，支持 60% 宽度居中、左右分列显示
 
@@ -170,7 +175,7 @@
 - 迁移根目录散落的测试脚本到 `tests/unit/`
 
 ### Added
-- 新增 `docs/guides/code-organization.md` 代码及文件组织规范（供 agent 生成代码参考）
+- 新增 `docs/guides/dev/code-standards.md` 代码及文件组织规范（供 agent 生成代码参考）
 
 ## [0.2.0] - 2026-03-28
 
