@@ -152,31 +152,24 @@ def _generate_streaming_response(
 def _handle_report_command(parts: list):
     """处理报告命令"""
     from huaqi_src.layers.capabilities.pattern.engine import get_pattern_engine
+    from huaqi_src.layers.capabilities.reports.manager import ReportManager
+    from huaqi_src.cli.context import console
 
     engine = get_pattern_engine()
+    manager = ReportManager()
 
     if len(parts) < 2:
-        report = engine.get_latest_weekly_report()
-        if report:
-            console.print(f"\n{engine.format_weekly_report(report)}\n")
-        else:
-            console.print("[dim]正在生成周报...[/dim]")
-            report = engine.generate_weekly_report()
-            if report:
-                console.print(f"\n{engine.format_weekly_report(report)}\n")
-            else:
-                console.print("[yellow]数据不足，无法生成周报。再多聊几天吧！[/yellow]\n")
+        console.print("[yellow]用法: /report [morning|daily|weekly|quarterly|insights] [date][/yellow]\n")
         return
 
     subcmd = parts[1]
+    date_str = parts[2] if len(parts) > 2 else "today"
 
-    if subcmd in ("weekly", "w"):
-        console.print("[dim]正在生成周报...[/dim]")
-        report = engine.generate_weekly_report()
-        if report:
-            console.print(f"\n{engine.format_weekly_report(report)}\n")
-        else:
-            console.print("[yellow]数据不足，无法生成周报。再多聊几天吧！[/yellow]\n")
+    if subcmd in ("morning", "daily", "weekly", "quarterly", "w"):
+        report_type = "weekly" if subcmd == "w" else subcmd
+        console.print(f"[dim]正在获取 {report_type} 报告...[/dim]")
+        content = manager.get_or_generate_report(report_type, date_str)
+        console.print(f"\n{content}\n")
     elif subcmd in ("insights", "i"):
         insights = engine.get_active_insights()
         if insights:
@@ -191,7 +184,7 @@ def _handle_report_command(parts: list):
         else:
             console.print("[dim]暂无洞察，继续记录日记和对话，我会更了解你。[/dim]\n")
     else:
-        console.print("[yellow]用法: /report [weekly|insights][/yellow]\n")
+        console.print("[yellow]用法: /report [morning|daily|weekly|quarterly|insights] [date][/yellow]\n")
 
 
 def _handle_care_command(parts: list):
