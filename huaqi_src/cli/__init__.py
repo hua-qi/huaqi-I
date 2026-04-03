@@ -17,6 +17,7 @@ from huaqi_src.cli.inbox import app as inbox_app
 from huaqi_src.cli.commands.people import people_app
 from huaqi_src.cli.commands.collector import app as collector_app
 from huaqi_src.cli.commands.study import study_app
+from huaqi_src.cli.commands.report import report_app
 
 app = typer.Typer(
     name="huaqi",
@@ -34,6 +35,7 @@ app.add_typer(inbox_app, name="inbox", rich_help_panel="操作工具")
 app.add_typer(people_app, name="people", rich_help_panel="操作工具")
 app.add_typer(collector_app, name="collector", rich_help_panel="操作工具")
 app.add_typer(study_app, name="study", rich_help_panel="操作工具")
+app.add_typer(report_app, name="report", rich_help_panel="操作工具")
 
 
 @app.command("chat")
