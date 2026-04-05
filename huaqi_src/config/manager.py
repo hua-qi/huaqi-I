@@ -28,6 +28,11 @@ class MemoryConfig(BaseModel):
     search_top_k: int = 5
 
 
+class SchedulerJobConfig(BaseModel):
+    enabled: bool = True
+    cron: Optional[str] = None
+
+
 class AppConfig(BaseModel):
     """应用配置"""
     version: str = "0.1.0"
@@ -51,6 +56,8 @@ class AppConfig(BaseModel):
 
     # 模块开关
     modules: Dict[str, bool] = Field(default_factory=dict)
+
+    scheduler_jobs: Dict[str, SchedulerJobConfig] = Field(default_factory=dict)
 
 
 class ConfigManager:

@@ -101,6 +101,7 @@ def test_world_provider_returns_context(tmp_path):
 
 
 def test_world_provider_returns_none_when_no_file(tmp_path):
+    from unittest.mock import patch
     from huaqi_src.layers.capabilities.reports.providers import _registry, DateRange
     from huaqi_src.layers.capabilities.reports.providers.world import WorldProvider
     _registry.clear()
@@ -110,8 +111,9 @@ def test_world_provider_returns_none_when_no_file(tmp_path):
     today = datetime.date.today()
     date_range = DateRange(start=today, end=today)
 
-    providers = get_providers("morning")
-    ctx = providers[0].get_context("morning", date_range)
+    with patch.object(WorldProvider, "_lazy_fetch", return_value=None):
+        providers = get_providers("morning")
+        ctx = providers[0].get_context("morning", date_range)
     assert ctx is None
 
 

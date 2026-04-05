@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from huaqi_src.layers.data.raw_signal.models import RawSignalFilter
 from huaqi_src.layers.data.raw_signal.store import RawSignalStore
@@ -78,12 +78,40 @@ def _run_learning_push():
         print(f"[LearningPush] 推送失败: {e}")
 
 
+def _run_world_fetch():
+    from huaqi_src.layers.data.world.pipeline import WorldPipeline
+    try:
+        pipeline = WorldPipeline()
+        pipeline.run()
+    except Exception as e:
+        print(f"[WorldFetch] 采集失败: {e}")
+
+
 KNOWN_JOB_IDS = {
     "morning_brief",
     "daily_report",
     "weekly_report",
     "quarterly_report",
     "learning_daily_push",
+    "world_fetch",
+}
+
+_DEFAULT_JOB_CONFIGS = {
+    "morning_brief":       {"cron": "0 8 * * *",             "display_name": "晨间简报"},
+    "daily_report":        {"cron": "0 23 * * *",            "display_name": "日终复盘"},
+    "weekly_report":       {"cron": "0 21 * * 0",            "display_name": "周报"},
+    "quarterly_report":    {"cron": "0 22 28-31 3,6,9,12 *", "display_name": "季报"},
+    "learning_daily_push": {"cron": "0 21 * * *",            "display_name": "学习推送"},
+    "world_fetch":         {"cron": "0 7 * * *",             "display_name": "世界新闻采集"},
+}
+
+_JOB_FUNCS = {
+    "morning_brief": _run_morning_brief,
+    "daily_report": _run_daily_report,
+    "weekly_report": _run_weekly_report,
+    "quarterly_report": _run_quarterly_report,
+    "learning_daily_push": _run_learning_push,
+    "world_fetch": _run_world_fetch,
 }
 
 
@@ -97,34 +125,18 @@ def _cleanup_unknown_jobs(manager: SchedulerManager):
         pass
 
 
-def register_default_jobs(manager: SchedulerManager):
+def register_default_jobs(manager: SchedulerManager, config: Optional["AppConfig"] = None):
+    from huaqi_src.config.manager import AppConfig
     _cleanup_unknown_jobs(manager)
-    manager.add_cron_job(
-        "morning_brief",
-        func=_run_morning_brief,
-        cron="0 8 * * *",
-    )
-    manager.add_cron_job(
-        "daily_report",
-        func=_run_daily_report,
-        cron="0 23 * * *",
-    )
-    manager.add_cron_job(
-        "weekly_report",
-        func=_run_weekly_report,
-        cron="0 21 * * 0",
-    )
-    manager.add_cron_job(
-        "quarterly_report",
-        func=_run_quarterly_report,
-        cron="0 22 28-31 3,6,9,12 *",
-    )
-    manager.add_cron_job(
-        "learning_daily_push",
-        func=_run_learning_push,
-        cron="0 21 * * *",
-    )
-
+    for job_id, defaults in _DEFAULT_JOB_CONFIGS.items():
+        job_config = None
+        if config is not None:
+            job_config = config.scheduler_jobs.get(job_id)
+        if job_config is not None and not job_config.enabled:
+            continue
+        cron = (job_config.cron if job_config and job_config.cron else defaults["cron"])
+        func = _JOB_FUNCS[job_id]
+        manager.add_cron_job(job_id, func=func, cron=cron)
 
 
 def process_pending_signals_job(

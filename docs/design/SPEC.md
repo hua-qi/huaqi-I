@@ -107,7 +107,6 @@
 
 ```
 huaqi/
-├── spec/                          # 项目文档
 │   ├── SPEC.md                    # 总体架构 (本文件)
 │   ├── architecture/              # 架构设计文档
 │   ├── roadmap/                   # 路线图

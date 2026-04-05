@@ -176,7 +176,7 @@ huaqi chat -s <thread_id>      # 恢复指定会话
 - `huaqi_src/cli/chat.py` - `run_langgraph_chat()` CLI 入口
 - `huaqi_src/cli/__init__.py` - `--session`/`--list-sessions` 参数定义
 - `huaqi_src/learning/learning_tools.py` - 学习助手工具（3 个 @tool）
-- `spec/decisions/ADR-004-langgraph-default-mode.md` - 架构决策与踩坑记录
+- `docs/design/adr/ADR-004-langgraph-default-mode.md` - 架构决策与踩坑记录
 
 ---
 

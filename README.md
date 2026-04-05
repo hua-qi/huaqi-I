@@ -55,7 +55,7 @@ huaqi pipeline run                # 执行流水线
 huaqi daemon start                # 启动定时任务
 ```
 
-详见 [docs/guides/cli-guide.md](docs/guides/cli-guide.md)
+详见 [docs/guides/user/cli-guide.md](docs/guides/user/cli-guide.md)
 
 ## 系统架构
 
@@ -77,7 +77,7 @@ huaqi daemon start                # 启动定时任务
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-详见 [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) 和 [docs/design/TECH_SPEC.md](docs/design/TECH_SPEC.md)
+详见 [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md)、产品定位 [docs/design/SPEC.md](docs/design/SPEC.md) 和 技术选型 [docs/design/TECH_SPEC.md](docs/design/TECH_SPEC.md)
 
 ## 项目结构
 
@@ -130,7 +130,7 @@ huaqi-growing/
 | P7 | 数据隔离与用户管理 | ✅ |
 | P8 | 配置热重载与数据迁移 | ✅ |
 
-详见 [spec/roadmap/ROADMAP.md](spec/roadmap/ROADMAP.md)
+详见 [docs/plans/ROADMAP.md](docs/plans/ROADMAP.md)
 
 ## 文档索引
 
@@ -138,14 +138,15 @@ huaqi-growing/
 |------|------|
 | [QUICK_START.md](QUICK_START.md) | 5分钟快速上手 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
-| [docs/guides/cli-guide.md](docs/guides/cli-guide.md) | 完整命令参考 |
-| [docs/guides/code-organization.md](docs/guides/code-organization.md) | 代码及文件组织规范 |
+| [docs/guides/user/cli-guide.md](docs/guides/user/cli-guide.md) | 完整命令参考 |
+| [docs/guides/dev/code-standards.md](docs/guides/dev/code-standards.md) | 代码及文件组织规范 |
 | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) | 系统架构 |
-| [docs/design/TECH_SPEC.md](docs/design/TECH_SPEC.md) | 详细技术规范 |
+| [docs/design/SPEC.md](docs/design/SPEC.md) | 宏观系统说明与产品愿景（功能层面） |
+| [docs/design/TECH_SPEC.md](docs/design/TECH_SPEC.md) | 具体的技术选型与技术方案（技术层面） |
 | [docs/design/PRD.md](docs/design/PRD.md) | 产品需求文档 |
-| [docs/ops/test-plan.md](docs/ops/test-plan.md) | 测试计划 |
-| [spec/roadmap/ROADMAP.md](spec/roadmap/ROADMAP.md) | 开发路线图 |
-| [docs/DOC_GUIDELINES.md](docs/DOC_GUIDELINES.md) | 文档编写规范 |
+| [docs/plans/ops/test-plan.md](docs/plans/ops/test-plan.md) | 测试计划 |
+| [docs/plans/ROADMAP.md](docs/plans/ROADMAP.md) | 开发路线图 |
+| [docs/guides/dev/DOC_GUIDELINES.md](docs/guides/dev/DOC_GUIDELINES.md) | 文档编写规范 |
 
 ## License
 

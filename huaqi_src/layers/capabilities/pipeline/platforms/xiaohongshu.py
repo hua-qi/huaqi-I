@@ -22,8 +22,8 @@ class XiaoHongShuPublisher(BasePublisher):
     
     def __init__(self, config: dict = None):
         super().__init__(config)
-        from ...config.paths import get_drafts_dir
-        self.draft_dir = Path(self.config.get("draft_dir", str(get_drafts_dir() / "xiaohongshu")))
+        from huaqi_src.config.paths import get_drafts_dir
+        self.draft_dir = Path(self.config.get("draft_dir", str(get_drafts_dir())))
         self.draft_dir = self.draft_dir.expanduser() if str(self.draft_dir).startswith("~") else self.draft_dir
         self.draft_dir.mkdir(parents=True, exist_ok=True)
         

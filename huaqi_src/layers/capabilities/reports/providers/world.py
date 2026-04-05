@@ -17,15 +17,28 @@ class WorldProvider(DataProvider):
             self._data_dir = require_data_dir()
 
     def get_context(self, report_type: str, date_range: DateRange) -> "str | None":
-        world_dir = self._data_dir / "world"
-        if not world_dir.exists():
-            return None
         today = date_range.end.isoformat()
-        world_file = world_dir / f"{today}.md"
+        world_file = self._data_dir / "world" / f"{today}.md"
         if not world_file.exists():
+            world_file = self._lazy_fetch(today)
+        if world_file is None or not world_file.exists():
             return None
         content = world_file.read_text(encoding="utf-8")[:1000]
         return f"## 今日世界热点\n{content}"
+
+    def _lazy_fetch(self, date_str: str) -> "Optional[Path]":
+        try:
+            from huaqi_src.layers.data.world.pipeline import WorldPipeline
+            import datetime
+            pipeline = WorldPipeline(data_dir=self._data_dir)
+            target_date = datetime.date.fromisoformat(date_str)
+            success = pipeline.run(date=target_date)
+            if not success:
+                return None
+            return self._data_dir / "world" / f"{date_str}.md"
+        except Exception as e:
+            print(f"[WorldProvider] lazy 补采失败: {e}")
+            return None
 
 
 try:

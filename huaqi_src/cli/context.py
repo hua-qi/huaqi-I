@@ -10,6 +10,7 @@ from typing import Optional
 from rich.console import Console
 
 from huaqi_src.config.manager import init_config_manager, ConfigManager
+from huaqi_src.config.paths import require_data_dir, get_memory_dir
 from huaqi_src.layers.capabilities.personality import PersonalityEngine
 from huaqi_src.layers.capabilities.hooks import HookManager
 from huaqi_src.layers.capabilities.growth import GrowthTracker
@@ -17,6 +18,8 @@ from huaqi_src.layers.data.diary import DiaryStore
 from huaqi_src.layers.data.git.auto_commit import GitAutoCommit
 from huaqi_src.layers.capabilities.llm.manager import LLMConfig, Message, LLMManager
 from huaqi_src.layers.data.memory.storage.markdown_store import MarkdownMemoryStore
+from huaqi_src.scheduler.startup_recovery import StartupJobRecovery
+from huaqi_src.scheduler.jobs import _DEFAULT_JOB_CONFIGS
 
 console = Console()
 
@@ -37,8 +40,6 @@ def ensure_initialized():
     global _config, _personality, _hooks, _growth, _diary, _memory_store, _git
     global DATA_DIR, MEMORY_DIR
 
-    from huaqi_src.config.paths import require_data_dir, get_memory_dir
-
     DATA_DIR = require_data_dir()
     MEMORY_DIR = get_memory_dir()
 
@@ -57,6 +58,27 @@ def ensure_initialized():
         _diary = DiaryStore(MEMORY_DIR, git_committer=_git)
     if _memory_store is None:
         _memory_store = MarkdownMemoryStore(MEMORY_DIR / "conversations")
+
+    _run_startup_recovery()
+
+
+def _run_startup_recovery():
+    try:
+        from huaqi_src.config.paths import get_scheduler_db_path
+        db_path = get_scheduler_db_path()
+        recovery = StartupJobRecovery(
+            data_dir=DATA_DIR,
+            db_path=db_path,
+            job_configs=_DEFAULT_JOB_CONFIGS,
+        )
+        recovery.run(notify_callback=_on_recovery_notify)
+    except Exception as e:
+        print(f"[Recovery] 启动检查失败: {e}")
+
+
+def _on_recovery_notify(missed_jobs):
+    names = "、".join(m.display_name for m in missed_jobs)
+    console.print(f"[yellow]⚠️  发现 {len(missed_jobs)} 个任务未执行（{names}），正在后台补跑...[/yellow]")
 
 
 def build_llm_manager(temperature: float = 0.7, max_tokens: int = 1500, timeout: int = 60) -> Optional[LLMManager]:

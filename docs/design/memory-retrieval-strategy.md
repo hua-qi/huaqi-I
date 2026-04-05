@@ -4,7 +4,7 @@
 
 huaqi 的核心体验依赖「记住用户」。随着对话历史、日记、用户画像持续积累，如何在每轮对话时高效找到相关历史内容，是影响回答质量和系统可持续性的关键设计决策。
 
-本文档记录各方案的分析、对比与最终选型，作为实现参考。架构决策详见 [ADR-003](../../spec/decisions/ADR-003-memory-retrieval-strategy.md)。
+本文档记录各方案的分析、对比与最终选型，作为实现参考。架构决策详见 [ADR-003](../../docs/design/adr/ADR-003-memory-retrieval-strategy.md)。
 
 ---
 
@@ -231,7 +231,7 @@ L4  3 个月以上（摘要索引，远期）
 - `huaqi_src/memory/vector/embedder.py` - bge-small-zh Embedding 服务
 - `huaqi_src/memory/vector/chroma_client.py` - Chroma 向量数据库客户端
 - `huaqi_src/memory/storage/markdown_store.py` - Markdown 存储与全文搜索
-- `spec/decisions/ADR-003-memory-retrieval-strategy.md` - 架构决策记录
+- `docs/design/adr/ADR-003-memory-retrieval-strategy.md` - 架构决策记录
 
 ---
 

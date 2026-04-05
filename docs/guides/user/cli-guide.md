@@ -291,6 +291,53 @@ huaqi report weekly --force
 
 ---
 
+## 世界新闻采集 `world`
+
+手动触发 RSS 世界新闻采集，写入 `{data_dir}/world/YYYY-MM-DD.md`，供晨报使用。
+
+```bash
+huaqi world fetch                  # 采集今天的世界新闻
+huaqi world fetch --date 2026-01-01  # 采集指定日期的世界新闻
+```
+
+> 也可通过 `huaqi daemon start` 启动后台服务，每日 07:00 自动采集。
+
+---
+
+## 定时任务管理 `scheduler`
+
+查看和配置所有定时任务的启用状态与触发时间。
+
+```bash
+huaqi scheduler list               # 查看所有任务的配置（Job ID、显示名、是否启用、cron）
+
+huaqi scheduler enable <job_id>    # 启用任务
+huaqi scheduler disable <job_id>   # 禁用任务
+huaqi scheduler set-cron <job_id> "<cron>"  # 自定义触发时间
+```
+
+**可用 Job ID：**
+
+| Job ID | 默认时间 | 说明 |
+|--------|---------|------|
+| `morning_brief` | 每日 08:00 | 晨间简报 |
+| `daily_report` | 每日 23:00 | 日终复盘 |
+| `weekly_report` | 每周日 21:00 | 周报 |
+| `quarterly_report` | 每季末月底 22:00 | 季报 |
+| `learning_daily_push` | 每日 21:00 | 学习推送 |
+| `world_fetch` | 每日 07:00 | 世界新闻采集 |
+
+**示例：**
+
+```bash
+huaqi scheduler disable world_fetch            # 禁用世界新闻采集
+huaqi scheduler set-cron morning_brief "0 7 * * *"  # 改为每天 07:00 生成晨报
+```
+
+> 配置持久化到 `{data_dir}/memory/config.yaml` 的 `scheduler_jobs` 字段，重启后生效。
+
+---
+
 ## 完整工作流示例
 
 ```bash

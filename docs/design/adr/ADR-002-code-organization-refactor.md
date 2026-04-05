@@ -19,7 +19,7 @@
 
 ### 1. 建立代码组织规范文档
 
-新增 `docs/guides/code-organization.md`，明确：
+新增 `docs/guides/dev/code-standards.md`，明确：
 - 目录结构总览与各模块职责边界
 - 文件命名规范（禁止 `new_`/`v2_`/`final_` 修饰词）
 - 代码文件内部结构顺序（标准库 → 第三方 → 本地；常量 → 模型 → 类 → 单例）

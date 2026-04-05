@@ -769,6 +769,17 @@ def run_langgraph_chat(thread_id: str = None):
                 console.print("\n\n[dim]再见！[/dim]\n")
                 break
 
+        if turn_count > 0:
+            import huaqi_src.cli.context as ctx
+            if hasattr(ctx, "_git") and ctx._git is not None:
+                result = ctx._git.commit_memory_change(agent.thread_id)
+                if result.pushed:
+                    console.print("[dim]☁️ 已同步到远端[/dim]")
+                elif result.committed and not result.has_remote:
+                    console.print("[dim]💾 已本地保存（未配置远端）[/dim]")
+                elif result.committed and result.has_remote and not result.pushed:
+                    console.print(f"[dim]⚠️ 本地已保存，推送失败: {result.error}[/dim]")
+
     except ImportError as e:
         console.print(f"[red]LangGraph Agent 不可用: {e}[/red]")
         console.print("[dim]回退到传统模式...[/dim]\n")

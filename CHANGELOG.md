@@ -7,6 +7,19 @@
 ## [Unreleased]
 
 ### Added
+- **WorldPipeline 独立采集流程**：新增 `huaqi_src/layers/data/world/pipeline.py`，封装 RSS 世界新闻抓取与存储为独立可调用流程，写入 `{data_dir}/world/YYYY-MM-DD.md`。
+- **JobExecutionLog 调度器执行日志**：新增 `huaqi_src/scheduler/execution_log.py`，基于 SQLite `job_execution_log` 表记录每次任务执行的起止时间与状态，支持按 job_id + scheduled_at 查询。
+- **MissedJobScanner 遗漏任务扫描器**：新增 `huaqi_src/scheduler/missed_job_scanner.py`，通过 APScheduler CronTrigger 枚举指定时间窗口内应触发的时间点，比对执行日志返回未成功执行的任务列表。
+- **StartupJobRecovery 启动补跑**：新增 `huaqi_src/scheduler/startup_recovery.py`，CLI 启动时对比上次打开时间与当前时间，后台线程自动补跑遗漏任务，并通过 `scheduler_meta.json` 持久化 `cli_last_opened` 时间戳。
+- **SchedulerJobConfig 配置开关**：`AppConfig` 新增 `scheduler_jobs: Dict[str, SchedulerJobConfig]` 字段，支持按 job_id 配置启用状态与自定义 cron 表达式。
+- **WorldProvider lazy 补采**：`WorldProvider.get_context()` 在目标日期文件缺失时自动触发 `WorldPipeline.run()` 补采，失败则返回 `None`，不影响报告生成流程。
+- **`huaqi world fetch` CLI 命令**：新增 `huaqi_src/cli/commands/world.py`，支持 `huaqi world fetch [--date YYYY-MM-DD]` 手动触发世界新闻采集。
+- **`huaqi scheduler` CLI 命令组**：新增 `huaqi_src/cli/commands/scheduler.py`，提供 `list`、`enable <job_id>`、`disable <job_id>`、`set-cron <job_id> <cron>` 四个子命令，用于查看和管理定时任务配置。
+- **jobs.py 新增 `world_fetch` 定时任务**：默认每日 07:00 触发 WorldPipeline 采集，cron 可通过 `scheduler_jobs` 配置覆盖。
+
+### Changed
+- `register_default_jobs()` 新增可选 `config: AppConfig` 参数，支持按配置跳过已禁用任务、使用自定义 cron。
+- `ensure_initialized()` 末尾追加 `_run_startup_recovery()` 调用，CLI 每次启动时自动检测并后台补跑遗漏任务。
 - **报告查看与生成系统**：新增统一的 `ReportManager` 用于处理所有报告的检索与实时生成。
 - 新增 `huaqi report` 顶级 CLI 命令组，支持 `morning`, `daily`, `weekly` 子命令，可附加 `[date]` 及 `--force` 选项强制重新生成。
 - 聊天内 `/report` 指令扩充，现支持 `/report [morning|daily|weekly|quarterly|insights] [date]` 实时获取或生成对应报告。

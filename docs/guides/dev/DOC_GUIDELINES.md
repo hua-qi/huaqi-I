@@ -13,14 +13,18 @@ huaqi-growing/
 ├── CHANGELOG.md                     # 版本变更记录
 │
 ├── docs/
-│   ├── DOC_GUIDELINES.md            # 本文件，文档编写规范
-│   ├── design/                      # 产品与技术设计文档
+│   ├── DOC_GUIDELINES.md            # 本文件，项目文档组织与编写规范
+│   ├── design/                      # 顶层产品与技术设计文档（宏观系统说明）
+│   │   ├── adr/                     # 架构决策记录 (ADR)
+│   │   │   └── ADR-*.md
 │   │   ├── ARCHITECTURE.md          # 系统架构（权威版本）
 │   │   ├── PRD.md                   # 产品需求文档
-│   │   ├── SPEC.md                  # 功能规范
-│   │   ├── TECH_SPEC.md             # 技术方案
-│   │   └── memory-retrieval-strategy.md  # 记忆检索策略分析
-│   ├── features/                    # 各功能模块文档
+│   │   ├── SPEC.md                  # 宏观系统说明与产品愿景（功能层面）
+│   │   ├── TECH_SPEC.md             # 具体的技术选型与技术方案（技术层面）
+│   │   └── MULTI_USER_DESIGN.md     # 多用户设计规范
+│   ├── designs/                     # 历史特性设计草稿（带日期前缀，保留用于对比总结）
+│   │   └── 2026-*.md
+│   ├── features/                    # 各个功能模块的设计定稿
 │   │   ├── user-profile/
 │   │   │   ├── extraction.md        # 用户画像提取
 │   │   │   └── narrative.md         # 用户画像叙述
@@ -30,27 +34,22 @@ huaqi-growing/
 │   │   ├── pattern-learning.md      # 模式学习
 │   │   ├── langgraph-agent.md       # LangGraph Agent 对话系统
 │   │   └── listeners.md             # 监听采集（微信 + CLI 对话）
-│   ├── guides/                      # 用户与开发者指南
-│   │   ├── code-organization.md     # 代码及文件组织规范（供 agent 参考）
-│   │   ├── cli-guide.md             # CLI 命令完整参考
-│   │   ├── usage.md                 # 开发集成使用指南
-│   │   └── cli-ui-improvements.md   # CLI/UI 改进方案
-│   └── ops/                         # 运维与工程文档
-│       ├── implementation-plan.md   # 实施计划
-│       ├── test-plan.md             # 测试计划
-│       └── migration-v2.md          # 数据迁移方案
-│
-└── spec/
-    ├── decisions/                   # 架构决策记录 (ADR)
-    │   ├── ADR-000-project-origins.md
-    │   ├── ADR-001-initial-design.md
-    │   ├── ADR-002-code-organization-refactor.md
-    │   ├── ADR-003-memory-retrieval-strategy.md
-    │   └── ADR-004-langgraph-default-mode.md
-    ├── roadmap/
-    │   └── ROADMAP.md               # 项目路线图
-    ├── IMPORT_GUIDE.md
-    └── MULTI_USER_DESIGN.md
+│   ├── guides/                      # 指南类文档
+│   │   ├── user/                    # 面向使用者的指南
+│   │   │   ├── cli-guide.md         # CLI 命令完整参考（字典式命令清单）
+│   │   │   └── IMPORT_GUIDE.md      # 记忆数据导入指南
+│   │   └── dev/                     # 面向开发者的指南
+│   │       ├── DOC_GUIDELINES.md    # 本文件，项目文档组织与编写规范
+│   │       ├── usage.md             # 系统概览与开发集成使用指南
+│   │       ├── code-standards.md    # 代码及目录规范
+│   │       └── cli-ui-improvements.md # CLI/UI 改进方案
+│   └── plans/                       # 项目开发、测试与实施计划
+│       ├── ROADMAP.md               # 项目演进路线图
+│       ├── 2026-*.md                # 历史各阶段计划
+│       └── ops/                     # 运维与工程落地文档
+│           ├── implementation-plan.md   # 实施计划
+│           ├── test-plan.md             # 测试计划
+│           └── migration-v2.md          # 数据迁移方案
 ```
 
 ---
@@ -62,8 +61,8 @@ huaqi-growing/
 | 修复 bug | `CHANGELOG.md` | 相关功能文档（如果 bug 涉及文档描述有误） |
 | 新增小功能 | `CHANGELOG.md` | `docs/guides/` 中对应的使用说明 |
 | 新增大功能（影响架构） | `CHANGELOG.md` + `docs/features/` 下新建文档 | `docs/design/ARCHITECTURE.md` |
-| 涉及架构决策 | `spec/decisions/ADR-xxx.md` | `docs/design/ARCHITECTURE.md` |
-| 修改 CLI 命令 | `CHANGELOG.md` + `docs/guides/cli-guide.md` | `README.md`（如果是核心命令） |
+| 涉及架构决策 | `docs/design/adr/ADR-xxx.md` | `docs/design/ARCHITECTURE.md` |
+| 修改 CLI 命令 | `CHANGELOG.md` + `docs/guides/user/cli-guide.md` | `README.md`（如果是核心命令） |
 | 数据迁移 | `docs/ops/migration-*.md` | `CHANGELOG.md` |
 
 ---
@@ -118,7 +117,7 @@ huaqi-growing/
 - `huaqi_src/core/xxx.py` - 说明
 ```
 
-### 3.3 架构决策记录（spec/decisions/ADR-xxx.md）
+### 3.3 架构决策记录（docs/design/adr/ADR-xxx.md）
 
 适用于：技术选型、架构重大变更、废弃旧方案等。
 
@@ -163,7 +162,7 @@ huaqi-growing/
 | docs/features/ | 小写，连字符 | `pattern-learning.md` |
 | docs/guides/ | 小写，连字符 | `cli-guide.md` |
 | docs/ops/ | 小写，连字符 | `migration-v2.md` |
-| spec/decisions/ | `ADR-NNN-短标题.md` | `ADR-002-langgraph-adoption.md` |
+| docs/design/adr/ | `ADR-NNN-短标题.md` | `ADR-002-langgraph-adoption.md` |
 
 ---
 
@@ -189,5 +188,5 @@ huaqi-growing/
 - [ ] 是否需要更新 `CHANGELOG.md`？
 - [ ] 文档放在正确的目录下了吗（参考第一节的目录结构）？
 - [ ] 文档命名遵循了第四节的约定吗？
-- [ ] 如果修改了 CLI 命令，`docs/guides/cli-guide.md` 是否同步更新了？
+- [ ] 如果修改了 CLI 命令，`docs/guides/user/cli-guide.md` 是否同步更新了？
 - [ ] 如果涉及架构变化，`docs/design/ARCHITECTURE.md` 是否需要更新？

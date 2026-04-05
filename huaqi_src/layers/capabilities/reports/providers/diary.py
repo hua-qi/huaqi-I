@@ -23,7 +23,10 @@ class DiaryProvider(DataProvider):
             return None
 
         if report_type == "daily":
-            diary_file = diary_dir / f"{date_range.end.isoformat()}.md"
+            month_str = date_range.end.strftime("%Y-%m")
+            diary_file = diary_dir / month_str / f"{date_range.end.isoformat()}.md"
+            if not diary_file.exists():
+                diary_file = diary_dir / f"{date_range.end.isoformat()}.md"
             if not diary_file.exists():
                 return None
             content = diary_file.read_text(encoding="utf-8")[:800]
@@ -32,9 +35,15 @@ class DiaryProvider(DataProvider):
         snippets = []
         current = date_range.end
         while current >= date_range.start:
-            f = diary_dir / f"{current.isoformat()}.md"
+            month_str = current.strftime("%Y-%m")
+            f = diary_dir / month_str / f"{current.isoformat()}.md"
+            if not f.exists():
+                f = diary_dir / f"{current.isoformat()}.md"
+            
             if f.exists():
-                snippets.append(f"### {current.isoformat()}\n{f.read_text(encoding='utf-8')[:300]}")
+                content = f.read_text(encoding="utf-8")[:300]
+                snippets.append(f"### {current.isoformat()}\n{content}")
+            
             current -= datetime.timedelta(days=1)
             if len(snippets) >= 7:
                 break
