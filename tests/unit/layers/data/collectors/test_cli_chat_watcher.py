@@ -55,3 +55,30 @@ def test_sync_all_processes_existing_files(tmp_path):
     watcher = CLIChatWatcher(watch_paths=watch_paths, data_dir=tmp_path)
     docs = watcher.sync_all()
     assert len(docs) == 3
+
+
+def test_process_file_creates_work_log(tmp_path):
+    conv_dir = tmp_path / "conversations"
+    md_file = conv_dir / "session_001.md"
+    _make_md_session(md_file)
+
+    watch_paths = [{"type": "codeflicker", "path": str(conv_dir)}]
+    watcher = CLIChatWatcher(watch_paths=watch_paths, data_dir=tmp_path)
+    watcher.process_file(md_file, tool_type="codeflicker")
+
+    work_logs_dir = tmp_path / "work_logs"
+    md_files = list(work_logs_dir.rglob("*.md"))
+    assert len(md_files) == 1
+
+
+def test_process_file_work_log_not_created_for_non_codeflicker(tmp_path):
+    conv_dir = tmp_path / "conversations"
+    md_file = conv_dir / "session_001.md"
+    _make_md_session(md_file)
+
+    watch_paths = [{"type": "custom", "path": str(conv_dir)}]
+    watcher = CLIChatWatcher(watch_paths=watch_paths, data_dir=tmp_path)
+    watcher.process_file(md_file, tool_type="custom")
+
+    work_logs_dir = tmp_path / "work_logs"
+    assert not work_logs_dir.exists()

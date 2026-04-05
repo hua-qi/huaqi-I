@@ -36,6 +36,18 @@ class CLIChatWatcher:
         if not messages:
             return []
 
+        if tool_type == "codeflicker":
+            import datetime as _dt
+            from huaqi_src.layers.data.collectors.work_log_writer import WorkLogWriter
+            now_iso = _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            thread_id = file_path.stem
+            WorkLogWriter(data_dir=self._data_dir).write(
+                messages=messages,
+                thread_id=thread_id,
+                time_start=now_iso,
+                time_end=now_iso,
+            )
+
         content_lines = [
             f"[{m.role}]: {m.content}" for m in messages
         ]
