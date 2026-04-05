@@ -337,3 +337,112 @@ def test_weekly_reports_provider_for_quarterly(tmp_path):
     ctx = providers[0].get_context("quarterly", date_range)
     assert ctx is not None
     assert "2026-W12" in ctx
+
+
+def test_work_log_provider_returns_todays_sessions(tmp_path):
+    import datetime
+    from huaqi_src.layers.capabilities.reports.providers import _registry, DateRange
+    from huaqi_src.layers.capabilities.reports.providers.work_log import WorkLogProvider
+    _registry.clear()
+
+    today = datetime.date.today()
+    month_key = today.strftime("%Y-%m")
+    date_str = today.strftime("%Y%m%d")
+
+    work_logs_dir = tmp_path / "work_logs" / month_key
+    work_logs_dir.mkdir(parents=True)
+
+    session_file = work_logs_dir / f"{date_str}_100000_threadabc.md"
+    session_file.write_text(
+        "---\n"
+        f"date: {today.isoformat()}\n"
+        "time_start: " + today.isoformat() + "T10:00:00Z\n"
+        "time_end: " + today.isoformat() + "T10:30:00Z\n"
+        "thread_id: threadabc\n"
+        "source: codeflicker\n"
+        "---\n\n"
+        "实现了 WorkLogWriter，写入 Markdown 文件。\n",
+        encoding="utf-8",
+    )
+
+    from huaqi_src.layers.capabilities.reports.providers import register
+    register(WorkLogProvider(data_dir=tmp_path))
+
+    providers = get_providers("daily")
+    work_log_providers = [p for p in providers if p.name == "work_log"]
+    assert len(work_log_providers) == 1
+
+    date_range = DateRange(start=today, end=today)
+    ctx = work_log_providers[0].get_context("daily", date_range)
+    assert ctx is not None
+    assert "WorkLogWriter" in ctx
+    assert "今日编程工作" in ctx
+
+
+def test_work_log_provider_returns_none_when_no_logs(tmp_path):
+    import datetime
+    from huaqi_src.layers.capabilities.reports.providers import _registry, DateRange, register
+    from huaqi_src.layers.capabilities.reports.providers.work_log import WorkLogProvider
+    _registry.clear()
+
+    register(WorkLogProvider(data_dir=tmp_path))
+
+    today = datetime.date.today()
+    date_range = DateRange(start=today, end=today)
+    providers = get_providers("daily")
+    work_log_providers = [p for p in providers if p.name == "work_log"]
+    assert len(work_log_providers) == 1
+
+    ctx = work_log_providers[0].get_context("daily", date_range)
+    assert ctx is None
+
+
+def test_work_log_provider_not_for_weekly(tmp_path):
+    from huaqi_src.layers.capabilities.reports.providers import _registry, register
+    from huaqi_src.layers.capabilities.reports.providers.work_log import WorkLogProvider
+    _registry.clear()
+
+    register(WorkLogProvider(data_dir=tmp_path))
+
+    providers = get_providers("weekly")
+    work_log_providers = [p for p in providers if p.name == "work_log"]
+    assert len(work_log_providers) == 0
+
+
+def test_work_log_provider_multiple_sessions_sorted(tmp_path):
+    import datetime
+    from huaqi_src.layers.capabilities.reports.providers import _registry, DateRange, register
+    from huaqi_src.layers.capabilities.reports.providers.work_log import WorkLogProvider
+    _registry.clear()
+
+    today = datetime.date.today()
+    month_key = today.strftime("%Y-%m")
+    date_str = today.strftime("%Y%m%d")
+
+    work_logs_dir = tmp_path / "work_logs" / month_key
+    work_logs_dir.mkdir(parents=True)
+
+    for hour, task in [("100000", "早上完成了 Task A"), ("140000", "下午完成了 Task B")]:
+        f = work_logs_dir / f"{date_str}_{hour}_thread{hour}.md"
+        f.write_text(
+            "---\n"
+            f"date: {today.isoformat()}\n"
+            f"time_start: {today.isoformat()}T{hour[:2]}:00:00Z\n"
+            f"time_end: {today.isoformat()}T{hour[:2]}:30:00Z\n"
+            f"thread_id: thread{hour}\n"
+            "source: codeflicker\n"
+            "---\n\n"
+            f"{task}\n",
+            encoding="utf-8",
+        )
+
+    register(WorkLogProvider(data_dir=tmp_path))
+
+    providers = get_providers("daily")
+    work_log_providers = [p for p in providers if p.name == "work_log"]
+    date_range = DateRange(start=today, end=today)
+    ctx = work_log_providers[0].get_context("daily", date_range)
+    assert ctx is not None
+    assert "Task A" in ctx
+    assert "Task B" in ctx
+    assert ctx.index("Task A") < ctx.index("Task B")
