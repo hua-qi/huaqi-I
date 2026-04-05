@@ -121,6 +121,7 @@ def _register_providers(self) -> None:
 |----------|---------|---------|--------|
 | `WorldProvider` | `data_dir/world/YYYY-MM-DD.md` | morning, daily | 10 |
 | `DiaryProvider` | `data_dir/memory/diary/YYYY-MM-DD.md` | `*` | 20 |
+| `WorkLogProvider` | `data_dir/work_logs/YYYY-MM/YYYYMMDD_*.md` | daily | 25 |
 | `LearningProvider` | `data_dir/learning/courses/` + `sessions/` | daily, weekly, quarterly | 30 |
 | `PeopleProvider` | `data_dir/people/*.md` | `*` | 40 |
 | `GrowthProvider` | `data_dir/memory/growth.yaml` | weekly, quarterly | 50 |
@@ -152,23 +153,21 @@ def _register_providers(self) -> None:
 
 ## 相关文件
 
-- `huaqi_src/reports/providers/__init__.py` — DataProvider 基类、DateRange、注册表
-- `huaqi_src/reports/context_builder.py` — build_context() 入口
-- `huaqi_src/reports/providers/world.py` — WorldProvider
-- `huaqi_src/reports/providers/diary.py` — DiaryProvider
-- `huaqi_src/reports/providers/people.py` — PeopleProvider
-- `huaqi_src/reports/providers/learning.py` — LearningProvider
-- `huaqi_src/reports/providers/growth.py` — GrowthProvider
-- `huaqi_src/reports/providers/events.py` — EventsProvider
-- `huaqi_src/reports/providers/weekly_reports.py` — WeeklyReportsProvider
-- `huaqi_src/reports/morning_brief.py` — 已重构
-- `huaqi_src/reports/daily_report.py` — 已重构
-- `huaqi_src/reports/weekly_report.py` — 已重构
-- `huaqi_src/reports/quarterly_report.py` — 已重构
-- `tests/reports/test_providers.py` — Provider 单元测试（16 cases）
-- `tests/reports/test_context_builder.py` — ContextBuilder 单元测试（3 cases）
+- `huaqi_src/layers/capabilities/reports/providers/__init__.py` — DataProvider 基类、DateRange、注册表
+- `huaqi_src/layers/capabilities/reports/context_builder.py` — build_context() 入口
+- `huaqi_src/layers/capabilities/reports/providers/world.py` — WorldProvider
+- `huaqi_src/layers/capabilities/reports/providers/diary.py` — DiaryProvider
+- `huaqi_src/layers/capabilities/reports/providers/work_log.py` — WorkLogProvider
+- `huaqi_src/layers/capabilities/reports/providers/people.py` — PeopleProvider
+- `huaqi_src/layers/capabilities/reports/providers/learning.py` — LearningProvider
+- `huaqi_src/layers/capabilities/reports/providers/growth.py` — GrowthProvider
+- `huaqi_src/layers/capabilities/reports/providers/events.py` — EventsProvider
+- `huaqi_src/layers/capabilities/reports/providers/weekly_reports.py` — WeeklyReportsProvider
+- `huaqi_src/layers/capabilities/reports/daily_report.py` — 已注册 WorkLogProvider
+- `tests/unit/layers/capabilities/reports/test_providers.py` — Provider 单元测试
+- `tests/unit/layers/capabilities/reports/test_daily_report.py` — DailyReportAgent 单元测试
 
 ---
 
-**文档版本**: v1.0
-**最后更新**: 2026-03-31
+**文档版本**: v1.1
+**最后更新**: 2026-05-04

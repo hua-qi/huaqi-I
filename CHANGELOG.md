@@ -7,6 +7,11 @@
 ## [Unreleased]
 
 ### Added
+- **WorkLogWriter**：新增 `huaqi_src/layers/data/collectors/work_log_writer.py`，将 codeflicker 会话摘要写入 `{data_dir}/work_logs/YYYY-MM/YYYYMMDD_HHMMSS_{thread_id}.md`，每次 `CLIChatWatcher` 处理 codeflicker 文件时自动触发。
+- **WorkLogProvider**：新增 `huaqi_src/layers/capabilities/reports/providers/work_log.py`，按天聚合当日所有 WorkLog 文件并注入日报上下文，优先级 25（介于 WorldProvider=10 与 DiaryProvider=20 之后）。
+- `DailyReportAgent._register_providers()` 注册 `WorkLogProvider`，日报上下文现自动包含当日 codeflicker 工作摘要。
+
+### Added
 - **WorldPipeline 独立采集流程**：新增 `huaqi_src/layers/data/world/pipeline.py`，封装 RSS 世界新闻抓取与存储为独立可调用流程，写入 `{data_dir}/world/YYYY-MM-DD.md`。
 - **JobExecutionLog 调度器执行日志**：新增 `huaqi_src/scheduler/execution_log.py`，基于 SQLite `job_execution_log` 表记录每次任务执行的起止时间与状态，支持按 job_id + scheduled_at 查询。
 - **MissedJobScanner 遗漏任务扫描器**：新增 `huaqi_src/scheduler/missed_job_scanner.py`，通过 APScheduler CronTrigger 枚举指定时间窗口内应触发的时间点，比对执行日志返回未成功执行的任务列表。
