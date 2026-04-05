@@ -39,3 +39,12 @@ def test_daily_report_context_includes_people(tmp_path):
     agent = DailyReportAgent(data_dir=tmp_path)
     context = agent._build_context()
     assert "张三" in context
+
+
+def test_daily_report_registers_work_log_provider(tmp_path):
+    from huaqi_src.layers.capabilities.reports.providers import _registry
+    _registry.clear()
+
+    agent = DailyReportAgent(data_dir=tmp_path)
+    provider_names = [p.name for p in _registry]
+    assert "work_log" in provider_names

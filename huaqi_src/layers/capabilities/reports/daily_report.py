@@ -18,14 +18,16 @@ class DailyReportAgent:
         from huaqi_src.layers.capabilities.reports.providers.world import WorldProvider
         from huaqi_src.layers.capabilities.reports.providers.diary import DiaryProvider
         from huaqi_src.layers.capabilities.reports.providers.people import PeopleProvider
+        from huaqi_src.layers.capabilities.reports.providers.work_log import WorkLogProvider
 
         for p in list(_registry):
-            if p.name in ("world", "diary", "people"):
+            if p.name in ("world", "diary", "people", "work_log"):
                 _registry.remove(p)
 
         register(WorldProvider(self._data_dir))
         register(DiaryProvider(self._data_dir))
         register(PeopleProvider(self._data_dir))
+        register(WorkLogProvider(self._data_dir))
 
     def _build_context(self) -> str:
         from huaqi_src.layers.capabilities.reports.providers import DateRange
