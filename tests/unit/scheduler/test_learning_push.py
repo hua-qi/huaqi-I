@@ -1,44 +1,21 @@
-import pytest
 from unittest.mock import patch, MagicMock
 
 
-def test_run_learning_push_no_courses(tmp_path):
-    from huaqi_src.config import paths as config_paths
-    config_paths._USER_DATA_DIR = tmp_path
-
-    from huaqi_src.layers.capabilities.learning.progress_store import LearningProgressStore
-    empty_store = LearningProgressStore(tmp_path / "memory" / "learning")
-
-    with patch("huaqi_src.scheduler.jobs._get_learning_store", return_value=empty_store):
-        from huaqi_src.scheduler.jobs import _run_learning_push
-        _run_learning_push()
+def test_learning_push_job_exists_in_defaults():
+    from huaqi_src.scheduler.scheduled_job_store import _DEFAULT_JOBS
+    ids = [j["id"] for j in _DEFAULT_JOBS]
+    assert "learning_daily_push" in ids
 
 
-def test_run_learning_push_with_active_course(tmp_path, capsys):
-    from huaqi_src.config import paths as config_paths
-    from huaqi_src.layers.capabilities.learning.models import CourseOutline, LessonOutline
-    from huaqi_src.layers.capabilities.learning.progress_store import LearningProgressStore
+def test_learning_push_job_has_prompt():
+    from huaqi_src.scheduler.scheduled_job_store import _DEFAULT_JOBS
+    job = next(j for j in _DEFAULT_JOBS if j["id"] == "learning_daily_push")
+    assert len(job["prompt"]) > 0
 
-    config_paths._USER_DATA_DIR = tmp_path
-    store = LearningProgressStore(tmp_path / "memory" / "learning")
-    store.save_course(CourseOutline(
-        skill_name="Rust",
-        slug="rust",
-        lessons=[
-            LessonOutline(index=1, title="所有权", status="in_progress"),
-        ],
-        current_lesson=1,
-    ))
 
-    mock_gen = MagicMock()
-    mock_gen.generate_quiz.return_value = "以下代码哪行会报错？"
-
-    with patch("huaqi_src.scheduler.jobs._get_learning_store", return_value=store), \
-         patch("huaqi_src.layers.capabilities.learning.course_generator.CourseGenerator", return_value=mock_gen):
-        from importlib import reload
-        import huaqi_src.scheduler.jobs as jobs
-        reload(jobs)
-        jobs._run_learning_push()
-
-    captured = capsys.readouterr()
-    assert "Rust" in captured.out or True
+def test_run_scheduled_job_calls_chat_agent(tmp_path):
+    mock_agent = MagicMock()
+    with patch("huaqi_src.agent.chat_agent.ChatAgent", return_value=mock_agent):
+        from huaqi_src.scheduler.job_runner import _run_scheduled_job
+        _run_scheduled_job("learning_daily_push", "推送今日学习内容", None)
+    mock_agent.run.assert_called_once()

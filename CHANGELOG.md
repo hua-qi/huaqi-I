@@ -7,7 +7,38 @@
 ## [Unreleased]
 
 ### Added
-- **WorkLogWriter**：新增 `huaqi_src/layers/data/collectors/work_log_writer.py`，将 codeflicker 会话摘要写入 `{data_dir}/work_logs/YYYY-MM/YYYYMMDD_HHMMSS_{thread_id}.md`，每次 `CLIChatWatcher` 处理 codeflicker 文件时自动触发。
+- **定时任务系统重构（统一为 Chat 任务）**：取消"内置函数任务"概念，所有定时任务统一为 prompt → ChatAgent 的 Chat 任务，存储在 `{data_dir}/memory/scheduled_jobs.yaml`，支持通过 CLI 和 `huaqi chat` 对话增删改查。
+  - 新增 `huaqi_src/scheduler/scheduled_job_store.py`：`ScheduledJob` Pydantic 模型 + `ScheduledJobStore` 文件存储层，含 cron 校验、原子写（`.tmp` + rename）、全序列文件锁（防并发 read-modify-write 数据丢失）、首次启动自动写入 6 个预置任务。
+  - 新增 `huaqi_src/scheduler/job_runner.py`：独立执行模块 `_run_scheduled_job(job_id, prompt, output_dir, raise_on_error)`，支持 output_dir 注入与执行日志记录。
+  - `huaqi_src/scheduler/jobs.py`：`register_jobs(manager, store)` 改为从 `ScheduledJobStore` 动态加载，清理逻辑统一用 `enabled_ids`，去掉冗余的双阶段清理。
+  - `huaqi_src/scheduler/manager.py`：`is_running()` / `list_jobs()` 改为先检查 `_scheduler is None`，不再触发懒加载，修复 `daemon stop/status` 命令意外创建 `AsyncIOScheduler` 实例的问题。
+  - `huaqi_src/cli/commands/system.py`：`daemon start` 前台模式新增每 5s 检查 `scheduled_jobs.yaml` mtime 的轮询循环，变更时自动调用 `register_jobs` 重载任务，解决 CLI/chat 修改 yaml 后 daemon 进程感知不到的跨进程隔离问题；`get_scheduler_manager()` 调用后移至 install/uninstall 分支之后，避免 stop/status 触发懒加载。
+  - `huaqi_src/agent/tools.py`：新增 `write_file_tool`、`read_file_tool`，以及 6 个 scheduler 管理工具（`scheduler_list_tool`、`scheduler_add_tool`、`scheduler_remove_tool`、`scheduler_update_tool`、`scheduler_enable_tool`、`scheduler_disable_tool`），均通过 `@register_tool` 自动注册。
+  - `huaqi scheduler add/remove/edit/run` 新增 4 个 CLI 子命令（含 `--clear-output-dir` 选项）。
+- **google_search_tool**：新增 `google_search_tool`，使用 `duckduckgo-search` / `ddgs` 库实现互联网实时搜索，内置最多 3 次 retry（限流/超时等待 3s/6s），内部捕获异常并返回友好提示字符串。
+- **工具自动注册机制**：`tools.py` 新增 `_TOOL_REGISTRY` 全局列表与 `register_tool` 装饰器；所有 tools（含 `learning_tools.py` 中的 4 个）均已注册；`chat_nodes.py` 的 `generate_response` 改用 `_TOOL_REGISTRY` 替代硬编码列表，新增工具只需加 `@register_tool` 装饰器即可生效。
+- **codeflicker CLI 活动记录采集**：`CLIChatWatcher` 新增对 `.jsonl` 格式的完整解析支持，自动发现 `~/.codeflicker/projects/` 下所有子目录作为 watch_paths（无需手动配置）；提取 `timestamp`、`sessionId`、`gitBranch` 等元数据。
+- **cli_chats 时间戳与目录结构**：codeflicker 会话按实际对话日期写入 `cli_chats/codeflicker/YYYY/MM/DD/{session_id}.md`，文件包含 YAML frontmatter（session_id、date、time_start、time_end、project、git_branch）及带本地时间前缀的消息内容。
+- **search_cli_chats_tool 日期检索**：新增 `_parse_date_from_query` 函数，支持「今天」「昨天」「4月8日」`2026-04-08` 等日期表达；按日期检索时直接定位到 `codeflicker/YYYY/MM/DD/` 目录，返回该天全部会话摘要。
+- `requirements.txt` 追加 `duckduckgo-search>=6.0.0`、`ddgs>=9.0.0`、`aiosqlite>=0.19.0`、`langgraph-checkpoint-sqlite>=1.0.0` 依赖。
+
+### Changed
+- `chat_nodes.py` `build_system_prompt` 第 5 条提示词更新：优先使用 `search_worldnews_tool` 查本地数据，本地无结果时再调用 `google_search_tool` 联网搜索。
+- `chat_nodes.py` `generate_response`：检测到 model 名含 `reasoner` 时抛出明确错误，提示用户切换至 `deepseek-chat`（`deepseek-reasoner` 官方不支持 function calling）。
+- `CLIChatWatcher.sync_all()`：改用 `glob`（非 `rglob`）扫描单层目录，跳过 30 天前及超过 1MB 的文件，避免大文件导致性能问题。
+- `WorkLogWriter`：`time_start` 优先取 jsonl `timestamp` 字段（精确时间），无时间信息时兜底使用同步时刻 UTC 时间。
+- `cli_chat_parser.py`：新增 `CLIChatSession` 数据类（含 `session_id`、`time_start`、`time_end`、`git_branch`、`project_dir`）和 `parse_cli_chat_session` 函数；`CLIChatMessage` 新增 `timestamp` 字段。
+
+### Fixed
+- **`ChatAgent.stream()` 子线程异常静默丢失**：`_run()` 协程内异常通过 `queue.Queue` 传回主线程，`stream()` 迭代中检测到异常后 join 子线程并重新抛出，确保 `run()` 及 `_run_scheduled_job(raise_on_error=True)` 能正确感知执行失败。
+- **`ScheduledJobStore` 并发修改数据丢失**：`add_job`/`update_job`/`remove_job` 改为在 `_locked()` 上下文管理器内完成完整的 read-modify-write 序列，消除进程间并发修改窗口；写入操作改为原子替换（先写 `.tmp` 再 `rename`）。
+- **`daemon stop/status` 意外初始化 `AsyncIOScheduler`**：`SchedulerManager.is_running()` 和 `list_jobs()` 改为先检查 `self._scheduler is None`，不再触发懒加载 property；`daemon_command_handler` 中 `get_scheduler_manager()` 调用后移至 install/uninstall early return 之后。
+- **daemon 跨进程隔离问题（yaml 写入后 daemon 不感知）**：`daemon start --foreground` 主循环改为每 5s 检查 `scheduled_jobs.yaml` 的 mtime，文件变更时自动调用 `register_jobs` 重载 APScheduler 任务，替代原来无效的 `_sync_to_scheduler` 进程内调用。
+- **`register_jobs` 禁用任务清理逻辑冗余**：统一使用 `enabled_ids` 作为清理基准，第一阶段即可移除所有不在 `enabled_ids` 中的 APScheduler 任务，去掉第二阶段单独遍历删除禁用任务的冗余循环。
+- **`MissedJobScanner` 时区处理错误**：改用标准库 `zoneinfo.ZoneInfo` 对 `since`/`until` 赋予正确时区，使用 `astimezone(tz)` 转换后再比较，替代原来裸 `replace(tzinfo=None)` 剥除时区的错误做法，消除系统时区与 `Asia/Shanghai` 不一致时的计算偏差。
+- **`StartupJobRecovery` 时钟回拨**：检测到 `now < last_opened` 时打印警告并将 `last_opened` 重置为 `now - 24h` 作为保守估计重新扫描，避免时钟回拨导致扫描区间为负数、漏检任务。
+
+新增 `huaqi_src/layers/data/collectors/work_log_writer.py`，将 codeflicker 会话摘要写入 `{data_dir}/work_logs/YYYY-MM/YYYYMMDD_HHMMSS_{thread_id}.md`，每次 `CLIChatWatcher` 处理 codeflicker 文件时自动触发。
 - **WorkLogProvider**：新增 `huaqi_src/layers/capabilities/reports/providers/work_log.py`，按天聚合当日所有 WorkLog 文件并注入日报上下文，优先级 25（介于 WorldProvider=10 与 DiaryProvider=20 之后）。
 - `DailyReportAgent._register_providers()` 注册 `WorkLogProvider`，日报上下文现自动包含当日 codeflicker 工作摘要。
 

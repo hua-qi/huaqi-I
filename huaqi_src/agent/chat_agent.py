@@ -114,6 +114,8 @@ class ChatAgent:
             try:
                 async for chunk in self._astream(user_input):
                     q.put(chunk)
+            except Exception as e:
+                q.put(e)
             finally:
                 q.put(_sentinel)
 
@@ -124,6 +126,9 @@ class ChatAgent:
             item = q.get()
             if item is _sentinel:
                 break
+            if isinstance(item, Exception):
+                t.join()
+                raise item
             yield item
 
         t.join()
@@ -157,7 +162,7 @@ class ChatAgent:
                             out = event.get("data", {}).get("output", {})
                             if isinstance(out, dict):
                                 response_text = out.get("response", "")
-                                if response_text and response_text != "抱歉，我现在有点忙，请稍后再试。":
+                                if response_text:
                                     collected_chunks.append(response_text)
                                     yield response_text
         except ImportError:
@@ -176,7 +181,7 @@ class ChatAgent:
                         out = event.get("data", {}).get("output", {})
                         if isinstance(out, dict):
                             response_text = out.get("response", "")
-                            if response_text and response_text != "抱歉，我现在有点忙，请稍后再试。":
+                            if response_text:
                                 collected_chunks.append(response_text)
                                 yield response_text
 

@@ -2,6 +2,7 @@ import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
+from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
 
@@ -52,16 +53,22 @@ class MissedJobScanner:
         since: datetime.datetime,
         until: datetime.datetime,
     ) -> List[datetime.datetime]:
+        tz = ZoneInfo(self.timezone)
         trigger = CronTrigger.from_crontab(cron, timezone=self.timezone)
+
+        since_aware = since.replace(tzinfo=tz) if since.tzinfo is None else since.astimezone(tz)
+        until_aware = until.replace(tzinfo=tz) if until.tzinfo is None else until.astimezone(tz)
+
         fire_times = []
-        current = since
+        current = since_aware
         while True:
             next_time = trigger.get_next_fire_time(None, current)
             if next_time is None:
                 break
-            next_naive = next_time.replace(tzinfo=None) if next_time.tzinfo else next_time
-            if next_naive > until:
+            next_local = next_time.astimezone(tz).replace(tzinfo=None)
+            until_naive = until_aware.replace(tzinfo=None)
+            if next_local > until_naive:
                 break
-            fire_times.append(next_naive)
-            current = next_naive + datetime.timedelta(seconds=1)
+            fire_times.append(next_local)
+            current = next_time + datetime.timedelta(seconds=1)
         return fire_times

@@ -70,3 +70,62 @@ def test_search_huaqi_chats_tool_finds_content(tmp_path):
     result = search_huaqi_chats_tool.invoke({"query": "犯错"})
     assert isinstance(result, str)
     assert "犯错" in result or "找到" in result
+
+
+from unittest.mock import patch, MagicMock
+
+def _make_mock_ddgs(return_value=None, side_effect=None):
+    mock_ddgs = MagicMock()
+    mock_ddgs.__enter__ = MagicMock(return_value=mock_ddgs)
+    mock_ddgs.__exit__ = MagicMock(return_value=False)
+    if side_effect is not None:
+        mock_ddgs.text = MagicMock(side_effect=side_effect)
+    else:
+        mock_ddgs.text = MagicMock(return_value=iter(return_value or []))
+    return mock_ddgs
+
+def test_google_search_tool_returns_formatted_results():
+    fake_results = [
+        {"title": "AI 新闻", "body": "大模型发展迅速", "href": "https://example.com/1"},
+        {"title": "科技动态", "body": "量子计算突破", "href": "https://example.com/2"},
+    ]
+    mock_ddgs = _make_mock_ddgs(return_value=fake_results)
+
+    from huaqi_src.agent.tools import google_search_tool
+    with patch("ddgs.DDGS", return_value=mock_ddgs):
+        result = google_search_tool.invoke({"query": "AI 新闻"})
+
+    assert isinstance(result, str)
+    assert "AI 新闻" in result
+    assert "https://example.com/1" in result
+
+
+def test_google_search_tool_returns_empty_message_when_no_results():
+    mock_ddgs = _make_mock_ddgs(return_value=[])
+
+    from huaqi_src.agent.tools import google_search_tool
+    with patch("ddgs.DDGS", return_value=mock_ddgs):
+        result = google_search_tool.invoke({"query": "xyznotexist"})
+
+    assert isinstance(result, str)
+    assert "未找到" in result
+
+
+def test_google_search_tool_handles_network_timeout():
+    mock_ddgs = _make_mock_ddgs(side_effect=Exception("Connection timed out"))
+
+    from huaqi_src.agent.tools import google_search_tool
+    with patch("ddgs.DDGS", return_value=mock_ddgs):
+        result = google_search_tool.invoke({"query": "test"})
+
+    assert "暂时不可用" in result
+
+
+def test_google_search_tool_handles_rate_limit():
+    mock_ddgs = _make_mock_ddgs(side_effect=Exception("ratelimit exceeded"))
+
+    from huaqi_src.agent.tools import google_search_tool
+    with patch("ddgs.DDGS", return_value=mock_ddgs):
+        result = google_search_tool.invoke({"query": "test"})
+
+    assert "频率过高" in result

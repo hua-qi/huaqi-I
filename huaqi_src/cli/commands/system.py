@@ -190,10 +190,6 @@ def daemon_command_handler(
     """管理后台定时任务服务"""
     ensure_initialized()
 
-    from huaqi_src.scheduler import get_scheduler_manager, register_default_jobs, default_scheduler_config
-
-    scheduler = get_scheduler_manager()
-
     if action == "install":
         import shutil
         import subprocess
@@ -220,20 +216,37 @@ def daemon_command_handler(
             console.print("[yellow]⚠️ 未找到已安装的 plist[/yellow]\n")
         return
 
+    from huaqi_src.scheduler import get_scheduler_manager
+    scheduler = get_scheduler_manager()
+
     if action == "start":
         if scheduler.is_running():
             console.print("[yellow]⚠️ Daemon 已在运行中[/yellow]")
             return
 
-        register_default_jobs(default_scheduler_config)
+        from huaqi_src.scheduler.jobs import register_jobs
+        from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
+        import huaqi_src.cli.context as _ctx
+        _store = ScheduledJobStore(_ctx.DATA_DIR)
+        register_jobs(scheduler, _store)
         scheduler.start()
 
         if foreground:
             console.print("[green]✅ Daemon 已启动 (前台模式)[/green]")
             console.print("[dim]按 Ctrl+C 停止[/dim]\n")
+            _yaml_path = _store._path
+            _last_mtime: float = _yaml_path.stat().st_mtime if _yaml_path.exists() else 0.0
             try:
                 while True:
-                    time.sleep(1)
+                    time.sleep(5)
+                    if _yaml_path.exists():
+                        _mtime = _yaml_path.stat().st_mtime
+                        if _mtime != _last_mtime:
+                            _last_mtime = _mtime
+                            try:
+                                register_jobs(scheduler, _store)
+                            except Exception as _e:
+                                console.print(f"[yellow]⚠️ 重载任务失败: {_e}[/yellow]")
             except KeyboardInterrupt:
                 scheduler.shutdown()
                 console.print("\n[dim]Daemon 已停止[/dim]")

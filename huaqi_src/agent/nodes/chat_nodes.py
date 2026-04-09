@@ -97,6 +97,7 @@ def build_system_prompt(
 2. 记住用户的重要信息和偏好
 3. 帮助用户记录日记、追踪成长、管理目标
 4. 在内容创作时提供协助
+5. 当用户询问新闻、时事、世界动态时，必须先调用 search_worldnews_tool 查询本地数据；如果工具返回"本地未找到"或无结果，必须紧接着调用 google_search_tool 在互联网上搜索，不得直接回答
 
 回复风格：
 - 温暖、真诚、有同理心
@@ -270,7 +271,13 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
         active_name = llm_mgr.get_active_provider()
         if not active_name:
             raise RuntimeError("未配置任何 LLM 提供商")
-        cfg = llm_mgr._configs[active_name]
+        cfg = next(iter(llm_mgr._configs.values()))
+
+        if "reasoner" in (cfg.model or "").lower():
+            raise RuntimeError(
+                f"模型 '{cfg.model}' 不支持工具调用（function calling）。"
+                f"请运行 `huaqi config set llm_providers` 将模型改为 deepseek-chat。"
+            )
 
         from langchain_openai import ChatOpenAI
         chat_model = ChatOpenAI(
@@ -282,25 +289,8 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
             streaming=True,
         )
 
-        from ..tools import (
-            search_diary_tool,
-            search_events_tool,
-            search_huaqi_chats_tool,
-            get_learning_progress_tool,
-            get_course_outline_tool,
-            start_lesson_tool,
-            mark_lesson_complete_tool,
-        )
-        tools = [
-            search_diary_tool,
-            search_events_tool,
-            search_huaqi_chats_tool,
-            get_learning_progress_tool,
-            get_course_outline_tool,
-            start_lesson_tool,
-            mark_lesson_complete_tool,
-        ]
-        chat_model_with_tools = chat_model.bind_tools(tools)
+        from ..tools import _TOOL_REGISTRY
+        chat_model_with_tools = chat_model.bind_tools(_TOOL_REGISTRY)
 
         response_msg = None
         async for chunk in chat_model_with_tools.astream(full_messages, config=config):
@@ -315,11 +305,24 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
         }
 
     except Exception as e:
-        error_msg = f"生成回复失败: {str(e)}"
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"generate_response 失败: {e}", exc_info=True)
+        err_str = str(e)
+        if "429" in err_str or "TooManyRequests" in err_str or "quota" in err_str.lower() or "服务树" in err_str:
+            user_msg = f"API 调用失败（配额或权限问题）：{err_str[:200]}"
+        elif "401" in err_str or "Unauthorized" in err_str or "authentication" in err_str.lower():
+            user_msg = f"API 认证失败，请检查 API Key 配置：{err_str[:200]}"
+        elif "timeout" in err_str.lower() or "timed out" in err_str.lower():
+            user_msg = "LLM 请求超时，请稍后重试。"
+        elif "Model Not Exist" in err_str or "model_not_found" in err_str.lower() or "invalid_request_error" in err_str.lower():
+            user_msg = f"模型不存在，请运行 `huaqi config llm-setup` 重新配置正确的模型名称（如 deepseek-chat）：{err_str[:200]}"
+        else:
+            user_msg = f"生成回复失败：{err_str[:200]}"
         return {
-            "error": error_msg,
-            "response": "抱歉，我现在有点忙，请稍后再试。",
-            "messages": [AIMessage(content="抱歉，我现在有点忙，请稍后再试。")],
+            "error": f"生成回复失败: {err_str}",
+            "response": user_msg,
+            "messages": [AIMessage(content=user_msg)],
         }
 
 

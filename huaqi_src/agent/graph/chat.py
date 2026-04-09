@@ -10,20 +10,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from ..state import AgentState, INTENT_CHAT, INTENT_DIARY, INTENT_SKILL, INTENT_UNKNOWN
-from ..tools import (
-    search_diary_tool,
-    search_events_tool,
-    search_work_docs_tool,
-    search_worldnews_tool,
-    search_person_tool,
-    get_relationship_map_tool,
-    search_cli_chats_tool,
-    search_huaqi_chats_tool,
-    get_learning_progress_tool,
-    get_course_outline_tool,
-    start_lesson_tool,
-    mark_lesson_complete_tool,
-)
+from ..tools import _TOOL_REGISTRY
 from ..nodes.chat_nodes import (
     classify_intent,
     build_context,
@@ -68,21 +55,7 @@ def build_chat_graph() -> StateGraph:
     workflow.add_node("require_user_confirmation", require_user_confirmation)
     
     # 1. 定义工具节点
-    tools = [
-        search_diary_tool,
-        search_events_tool,
-        search_work_docs_tool,
-        search_worldnews_tool,
-        search_person_tool,
-        get_relationship_map_tool,
-        search_cli_chats_tool,
-        search_huaqi_chats_tool,
-        get_learning_progress_tool,
-        get_course_outline_tool,
-        start_lesson_tool,
-        mark_lesson_complete_tool,
-    ]
-    tool_node = ToolNode(tools)
+    tool_node = ToolNode(_TOOL_REGISTRY)
     workflow.add_node("tools", tool_node)
     
     workflow.add_node("save_conversation", save_conversation)

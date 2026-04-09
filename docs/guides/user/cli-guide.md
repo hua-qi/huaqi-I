@@ -179,11 +179,16 @@ huaqi pipeline review <task-id> --publish     # 发布已审核内容
 
 ```bash
 huaqi daemon start                 # 后台启动定时任务
-huaqi daemon start --foreground    # 前台运行（Ctrl+C 停止）
+huaqi daemon start --foreground    # 前台运行，实时感知 scheduled_jobs.yaml 变更（Ctrl+C 停止）
 huaqi daemon stop                  # 停止
 huaqi daemon status                # 查看运行状态和任务列表
 huaqi daemon list                  # 列出所有注册任务
+
+huaqi daemon install               # 安装为 macOS LaunchAgent（开机自启）
+huaqi daemon uninstall             # 卸载开机自启
 ```
+
+> `--foreground` 模式下，每 5s 检查 `scheduled_jobs.yaml` 的修改时间，任务配置变更后自动重载，无需重启 daemon。
 
 ---
 
@@ -226,7 +231,8 @@ huaqi config set modules.cli_chat true
 
 | 类型 | 路径 |
 |------|------|
-| CLI 对话 | `{data_dir}/memory/cli_chats/YYYY-MM/<工具名>-<文件名>.md` |
+| codeflicker 会话 | `{data_dir}/memory/cli_chats/codeflicker/YYYY/MM/DD/{session_id}.md` |
+| 其他 CLI 工具 | `{data_dir}/memory/cli_chats/YYYY-MM/<工具名>-<文件名>.md` |
 
 ---
 
@@ -306,17 +312,26 @@ huaqi world fetch --date 2026-01-01  # 采集指定日期的世界新闻
 
 ## 定时任务管理 `scheduler`
 
-查看和配置所有定时任务的启用状态与触发时间。
+查看和管理所有定时任务（存储于 `{data_dir}/memory/scheduled_jobs.yaml`）。
 
 ```bash
-huaqi scheduler list               # 查看所有任务的配置（Job ID、显示名、是否启用、cron）
+huaqi scheduler list               # 查看所有任务（Job ID、显示名、启用状态、cron）
 
-huaqi scheduler enable <job_id>    # 启用任务
-huaqi scheduler disable <job_id>   # 禁用任务
-huaqi scheduler set-cron <job_id> "<cron>"  # 自定义触发时间
+# 增删改
+huaqi scheduler add                        # 交互式添加新任务
+huaqi scheduler remove <job_id>            # 删除任务
+huaqi scheduler edit <job_id>              # 交互式编辑任务
+huaqi scheduler edit <job_id> --clear-output-dir  # 清除 output_dir 字段
+
+# 启用/禁用
+huaqi scheduler enable <job_id>            # 启用任务
+huaqi scheduler disable <job_id>           # 禁用任务
+
+# 手动触发
+huaqi scheduler run <job_id>               # 立即执行一次（不影响下次定时）
 ```
 
-**可用 Job ID：**
+**预置任务（Job ID）：**
 
 | Job ID | 默认时间 | 说明 |
 |--------|---------|------|
@@ -330,11 +345,12 @@ huaqi scheduler set-cron <job_id> "<cron>"  # 自定义触发时间
 **示例：**
 
 ```bash
-huaqi scheduler disable world_fetch            # 禁用世界新闻采集
-huaqi scheduler set-cron morning_brief "0 7 * * *"  # 改为每天 07:00 生成晨报
+huaqi scheduler disable world_fetch
+huaqi scheduler add                        # 按提示输入 ID、名称、cron、prompt
+huaqi scheduler run morning_brief          # 立即生成今日晨报
 ```
 
-> 配置持久化到 `{data_dir}/memory/config.yaml` 的 `scheduler_jobs` 字段，重启后生效。
+> 也可在 `huaqi chat` 对话中直接说：「帮我新增一个每周五晚上10点的周总结任务」，Agent 内置 6 个任务管理工具。
 
 ---
 

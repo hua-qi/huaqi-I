@@ -18,7 +18,7 @@ def test_process_file_creates_markdown_doc(tmp_path):
 
     assert len(docs) == 1
     assert docs[0].doc_type == "cli_chat"
-    assert docs[0].source.startswith("cli_chat:codeflicker:")
+    assert docs[0].source.startswith("codeflicker:")
 
 
 def test_process_file_writes_to_memory_dir(tmp_path):

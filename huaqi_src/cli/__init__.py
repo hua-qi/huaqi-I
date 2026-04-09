@@ -139,13 +139,6 @@ def main(
     from huaqi_src.config.paths import get_memory_dir
     _ctx.MEMORY_DIR = get_memory_dir() if is_data_dir_set() else None
 
-    if is_data_dir_set() and ctx.invoked_subcommand == "daemon":
-        from huaqi_src.scheduler.jobs import register_default_jobs
-        from huaqi_src.scheduler.manager import get_scheduler_manager
-        _scheduler = get_scheduler_manager()
-        register_default_jobs(_scheduler)
-        _scheduler.start()
-
     if ctx.invoked_subcommand is None:
         from huaqi_src.cli.chat import run_langgraph_chat
         run_langgraph_chat()

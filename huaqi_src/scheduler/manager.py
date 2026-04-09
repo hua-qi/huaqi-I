@@ -252,8 +252,10 @@ class SchedulerManager:
     
     def list_jobs(self) -> List[Dict]:
         """列出所有任务"""
+        if self._scheduler is None:
+            return []
         try:
-            jobs = self.scheduler.get_jobs()
+            jobs = self._scheduler.get_jobs()
             return [
                 {
                     "id": job.id,
@@ -303,7 +305,9 @@ class SchedulerManager:
     
     def is_running(self) -> bool:
         """检查调度器是否运行中"""
-        return self.scheduler.running
+        if self._scheduler is None:
+            return False
+        return self._scheduler.running
 
 
 # 单例

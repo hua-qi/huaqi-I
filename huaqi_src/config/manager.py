@@ -29,6 +29,7 @@ class MemoryConfig(BaseModel):
 
 
 class SchedulerJobConfig(BaseModel):
+    """已废弃，保留仅用于兼容旧 config.yaml 读取"""
     enabled: bool = True
     cron: Optional[str] = None
 

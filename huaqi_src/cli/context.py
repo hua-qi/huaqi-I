@@ -19,7 +19,6 @@ from huaqi_src.layers.data.git.auto_commit import GitAutoCommit
 from huaqi_src.layers.capabilities.llm.manager import LLMConfig, Message, LLMManager
 from huaqi_src.layers.data.memory.storage.markdown_store import MarkdownMemoryStore
 from huaqi_src.scheduler.startup_recovery import StartupJobRecovery
-from huaqi_src.scheduler.jobs import _DEFAULT_JOB_CONFIGS
 
 console = Console()
 
@@ -65,11 +64,18 @@ def ensure_initialized():
 def _run_startup_recovery():
     try:
         from huaqi_src.config.paths import get_scheduler_db_path
+        from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
         db_path = get_scheduler_db_path()
+        store = ScheduledJobStore(DATA_DIR)
+        job_configs = {
+            job.id: {"cron": job.cron, "display_name": job.display_name}
+            for job in store.load_jobs()
+            if job.enabled
+        }
         recovery = StartupJobRecovery(
             data_dir=DATA_DIR,
             db_path=db_path,
-            job_configs=_DEFAULT_JOB_CONFIGS,
+            job_configs=job_configs,
         )
         recovery.run(notify_callback=_on_recovery_notify)
     except Exception as e:
@@ -92,6 +98,9 @@ def build_llm_manager(temperature: float = 0.7, max_tokens: int = 1500, timeout:
     provider_config = config.llm_providers[provider_name]
     api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
     llm = LLMManager()
+    from huaqi_src.layers.capabilities.llm.manager import OpenAIProvider
+    if provider_config.name not in ("openai", "claude", "dummy"):
+        llm.register_provider(provider_config.name, OpenAIProvider)
     llm_config = LLMConfig(
         provider=provider_config.name,
         model=provider_config.model,

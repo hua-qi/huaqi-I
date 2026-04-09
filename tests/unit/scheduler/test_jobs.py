@@ -1,83 +1,84 @@
-from unittest.mock import patch, MagicMock
-from huaqi_src.scheduler.jobs import register_default_jobs
+from unittest.mock import MagicMock
+from huaqi_src.scheduler.jobs import register_jobs
+from huaqi_src.scheduler.scheduled_job_store import ScheduledJob, ScheduledJobStore
 
 
-def test_register_default_jobs_adds_morning_brief():
+def _make_store(jobs):
+    store = MagicMock(spec=ScheduledJobStore)
+    store.load_jobs.return_value = jobs
+    return store
+
+
+def _default_jobs():
+    from huaqi_src.scheduler.scheduled_job_store import _DEFAULT_JOBS
+    return [ScheduledJob(**j) for j in _DEFAULT_JOBS]
+
+
+def test_register_jobs_adds_morning_brief():
     mock_manager = MagicMock()
-    mock_manager.add_cron_job.return_value = True
+    mock_manager.scheduler.get_jobs.return_value = []
+    store = _make_store(_default_jobs())
 
-    register_default_jobs(mock_manager)
+    register_jobs(mock_manager, store)
 
-    mock_manager.add_cron_job.assert_called()
     call_ids = [call.args[0] for call in mock_manager.add_cron_job.call_args_list]
     assert "morning_brief" in call_ids
 
 
-def test_register_default_jobs_includes_new_reports():
-    from huaqi_src.scheduler.manager import SchedulerManager
+def test_register_jobs_includes_all_default_jobs():
+    mock_manager = MagicMock()
+    mock_manager.scheduler.get_jobs.return_value = []
+    store = _make_store(_default_jobs())
 
-    mock_manager = MagicMock(spec=SchedulerManager)
-    register_default_jobs(mock_manager)
+    register_jobs(mock_manager, store)
 
     call_ids = [call.args[0] for call in mock_manager.add_cron_job.call_args_list]
     assert "morning_brief" in call_ids
     assert "daily_report" in call_ids
     assert "weekly_report" in call_ids
     assert "quarterly_report" in call_ids
+    assert "world_fetch" in call_ids
 
 
 def test_register_jobs_skips_disabled_job():
-    from unittest.mock import MagicMock
-    from huaqi_src.config.manager import AppConfig, SchedulerJobConfig
-    from huaqi_src.scheduler.jobs import register_default_jobs
-
     mock_manager = MagicMock()
-    config = AppConfig(
-        scheduler_jobs={"morning_brief": SchedulerJobConfig(enabled=False)}
-    )
+    mock_manager.scheduler.get_jobs.return_value = []
+    jobs = [
+        j.model_copy(update={"enabled": False}) if j.id == "morning_brief" else j
+        for j in _default_jobs()
+    ]
+    store = _make_store(jobs)
 
-    register_default_jobs(mock_manager, config=config)
+    register_jobs(mock_manager, store)
 
     call_ids = [call.args[0] for call in mock_manager.add_cron_job.call_args_list]
     assert "morning_brief" not in call_ids
 
 
 def test_register_jobs_uses_custom_cron():
-    from unittest.mock import MagicMock
-    from huaqi_src.config.manager import AppConfig, SchedulerJobConfig
-    from huaqi_src.scheduler.jobs import register_default_jobs
-
     mock_manager = MagicMock()
-    config = AppConfig(
-        scheduler_jobs={"morning_brief": SchedulerJobConfig(enabled=True, cron="0 7 * * *")}
-    )
+    mock_manager.scheduler.get_jobs.return_value = []
+    jobs = [
+        j.model_copy(update={"cron": "0 7 * * *"}) if j.id == "morning_brief" else j
+        for j in _default_jobs()
+    ]
+    store = _make_store(jobs)
 
-    register_default_jobs(mock_manager, config=config)
+    register_jobs(mock_manager, store)
 
-    cron_calls = {call.args[0]: call.kwargs.get("cron") for call in mock_manager.add_cron_job.call_args_list}
+    cron_calls = {
+        call.args[0]: call.kwargs.get("cron")
+        for call in mock_manager.add_cron_job.call_args_list
+    }
     assert cron_calls.get("morning_brief") == "0 7 * * *"
 
 
-def test_register_jobs_uses_default_cron_when_not_configured():
-    from unittest.mock import MagicMock
-    from huaqi_src.config.manager import AppConfig
-    from huaqi_src.scheduler.jobs import register_default_jobs
-
-    mock_manager = MagicMock()
-    config = AppConfig()
-
-    register_default_jobs(mock_manager, config=config)
-
-    cron_calls = {call.args[0]: call.kwargs.get("cron") for call in mock_manager.add_cron_job.call_args_list}
-    assert cron_calls.get("morning_brief") == "0 8 * * *"
-
-
 def test_register_jobs_includes_world_fetch():
-    from unittest.mock import MagicMock
-    from huaqi_src.scheduler.jobs import register_default_jobs
-
     mock_manager = MagicMock()
-    register_default_jobs(mock_manager)
+    mock_manager.scheduler.get_jobs.return_value = []
+    store = _make_store(_default_jobs())
+
+    register_jobs(mock_manager, store)
 
     call_ids = [call.args[0] for call in mock_manager.add_cron_job.call_args_list]
     assert "world_fetch" in call_ids

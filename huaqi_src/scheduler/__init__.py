@@ -5,9 +5,9 @@ from .handlers import (
     TaskHandlers,
     TASK_HANDLERS,
     get_task_handler,
-    register_default_jobs,
     default_scheduler_config,
 )
+from .jobs import register_jobs
 
 __all__ = [
     # Manager
@@ -17,6 +17,7 @@ __all__ = [
     "TaskHandlers",
     "TASK_HANDLERS",
     "get_task_handler",
-    "register_default_jobs",
     "default_scheduler_config",
+    # Jobs
+    "register_jobs",
 ]

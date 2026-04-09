@@ -204,7 +204,7 @@ def _wizard_set_llm(ctx):
         api_base=api_base or None,
     )
     config = ctx._config.load_config()
-    config.llm_providers[provider] = llm_config
+    config.llm_providers = {provider: llm_config}
     config.llm_default_provider = provider
     ctx._config.save_config()
 

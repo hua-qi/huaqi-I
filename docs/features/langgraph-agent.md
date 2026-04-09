@@ -124,14 +124,14 @@ chat_model = ChatOpenAI(
 
 ## Agent 工具列表
 
-当前注册到 ToolNode 的全部工具：
+当前注册到 ToolNode 的全部工具（通过 `_TOOL_REGISTRY` 自动注册，无需硬编码）：
 
 | 工具名 | 触发语义 |
-|--------|---------|
+|--------|---------| 
 | `search_diary_tool` | 搜索历史日记 |
 | `search_events_tool` | 搜索 CLI 交互事件记录 |
 | `search_work_docs_tool` | 搜索工作文档 |
-| `search_worldnews_tool` | 搜索近期世界新闻 |
+| `search_worldnews_tool` | 搜索近期世界新闻（本地采集） |
 | `search_person_tool` | 查询某人画像 |
 | `get_relationship_map_tool` | 获取关系网络全图 |
 | `search_cli_chats_tool` | 搜索与 CLI 工具的历史对话 |
@@ -139,6 +139,39 @@ chat_model = ChatOpenAI(
 | `get_learning_progress_tool` | 查询某技术的学习进度 |
 | `get_course_outline_tool` | 获取某技术的课程大纲 |
 | `start_lesson_tool` | 开始/继续学习某技术当前章节 |
+| `mark_lesson_complete_tool` | 标记当前章节完成 |
+| `google_search_tool` | 互联网实时搜索（DuckDuckGo），本地数据不足时使用 |
+
+### 工具注册机制
+
+`tools.py` 维护 `_TOOL_REGISTRY` 全局列表和 `register_tool` 装饰器：
+
+```python
+_TOOL_REGISTRY: list = []
+
+def register_tool(fn):
+    _TOOL_REGISTRY.append(fn)
+    return fn
+
+@register_tool
+@tool
+def search_diary_tool(query: str) -> str:
+    ...
+```
+
+`learning_tools.py` 中的工具在 import 后通过循环追加注册：
+
+```python
+for _t in (get_learning_progress_tool, get_course_outline_tool, start_lesson_tool, mark_lesson_complete_tool):
+    _TOOL_REGISTRY.append(_t)
+```
+
+`generate_response` 节点直接消费 `_TOOL_REGISTRY`，新增工具只需加 `@register_tool` 装饰器即可生效：
+
+```python
+from ..tools import _TOOL_REGISTRY
+chat_model_with_tools = chat_model.bind_tools(_TOOL_REGISTRY)
+```
 
 ---
 
@@ -180,5 +213,5 @@ huaqi chat -s <thread_id>      # 恢复指定会话
 
 ---
 
-**文档版本**: v1.2
-**最后更新**: 2026-03-31
+**文档版本**: v1.3
+**最后更新**: 2026-07-04

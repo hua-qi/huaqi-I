@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from huaqi_src.scheduler.missed_job_scanner import MissedJob, MissedJobScanner
+from huaqi_src.scheduler.scheduled_job_store import ScheduledJob
 
 
 _META_FILE = "scheduler_meta.json"
@@ -57,6 +58,13 @@ class StartupJobRecovery:
         if last_opened is None:
             return
 
+        if now < last_opened:
+            print(
+                f"[Scheduler] 检测到系统时钟回拨 (last={last_opened.isoformat()}, now={now.isoformat()})，"
+                f"以保守估计重新扫描最近 24 小时"
+            )
+            last_opened = now - datetime.timedelta(hours=24)
+
         scanner = MissedJobScanner(
             db_path=self.db_path,
             job_configs=self.job_configs,
@@ -70,29 +78,36 @@ class StartupJobRecovery:
         if notify_callback is not None:
             notify_callback(missed)
 
+        from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
+        store = ScheduledJobStore(self.data_dir)
+        jobs = {job.id: job for job in store.load_jobs()}
+
         t = threading.Thread(
             target=self._run_missed_jobs,
-            args=(missed,),
+            args=(missed, jobs),
             daemon=True,
         )
         t.start()
 
-    def _run_missed_jobs(self, missed: List[MissedJob]):
+    def _run_missed_jobs(self, missed: List[MissedJob], jobs: Dict[str, ScheduledJob]):
         from huaqi_src.scheduler.execution_log import JobExecutionLog
+        from huaqi_src.scheduler.job_runner import _run_scheduled_job
+
         log = JobExecutionLog(self.db_path)
 
-        _job_funcs = self._get_job_funcs()
         for missed_job in missed:
-            func = _job_funcs.get(missed_job.job_id)
-            if func is None:
+            job = jobs.get(missed_job.job_id)
+            if job is None:
                 continue
             entry_id = log.write_start(missed_job.job_id, missed_job.scheduled_at)
             try:
-                func()
+                _run_scheduled_job(
+                    job.id,
+                    job.prompt,
+                    job.output_dir,
+                    scheduled_at=missed_job.scheduled_at,
+                    raise_on_error=True,
+                )
                 log.write_result(entry_id, "success")
             except Exception as e:
                 log.write_result(entry_id, "failed", error=str(e))
-
-    def _get_job_funcs(self) -> dict:
-        from huaqi_src.scheduler.jobs import _JOB_FUNCS
-        return _JOB_FUNCS
