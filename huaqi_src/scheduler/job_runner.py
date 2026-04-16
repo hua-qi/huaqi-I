@@ -3,8 +3,18 @@ from pathlib import Path
 from typing import Optional
 
 
+_JOB_FILENAME_MAP = {
+    "morning_brief": lambda dt: f"{dt.strftime('%Y-%m-%d')}-morning.md",
+    "daily_report": lambda dt: f"{dt.strftime('%Y-%m-%d')}-evening.md",
+    "weekly_report": lambda dt: f"{dt.strftime('%Y-W%W')}.md",
+    "quarterly_report": lambda dt: f"{dt.strftime('%Y')}-Q{(dt.month - 1) // 3 + 1}.md",
+}
+
+
 def get_job_output_filename(job_id: str, scheduled_at: Optional[datetime.datetime] = None) -> str:
     dt = scheduled_at or datetime.datetime.now()
+    if job_id in _JOB_FILENAME_MAP:
+        return _JOB_FILENAME_MAP[job_id](dt)
     return f"{job_id}_{dt.strftime('%Y%m%d_%H%M%S')}.md"
 
 

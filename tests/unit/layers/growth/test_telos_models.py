@@ -22,7 +22,7 @@ class TestDimensionLayer:
 
 class TestStandardDimensions:
     def test_nine_standard_dimensions(self):
-        assert len(STANDARD_DIMENSIONS) == 9
+        assert len(STANDARD_DIMENSIONS) == 8
 
     def test_core_layer_dimensions(self):
         core = [d for d, l in STANDARD_DIMENSION_LAYERS.items() if l == DimensionLayer.CORE]
@@ -34,7 +34,7 @@ class TestStandardDimensions:
 
     def test_surface_layer_dimensions(self):
         surface = [d for d, l in STANDARD_DIMENSION_LAYERS.items() if l == DimensionLayer.SURFACE]
-        assert set(surface) == {"learned", "people", "shadows"}
+        assert set(surface) == {"learned", "shadows"}
 
 
 class TestTelosDimensionCreation:
@@ -212,3 +212,17 @@ class TestTelosDimensionMarkdown:
         assert restored.layer == dim.layer
         assert restored.confidence == dim.confidence
         assert restored.content.strip() == dim.content.strip()
+
+
+class TestStandardDimensionsNoPeople:
+    def test_people_not_in_standard_dimensions(self):
+        from huaqi_src.layers.growth.telos.models import STANDARD_DIMENSIONS
+        assert "people" not in STANDARD_DIMENSIONS
+
+    def test_eight_standard_dimensions(self):
+        from huaqi_src.layers.growth.telos.models import STANDARD_DIMENSIONS
+        assert len(STANDARD_DIMENSIONS) == 8
+
+    def test_people_not_in_standard_dimension_layers(self):
+        from huaqi_src.layers.growth.telos.models import STANDARD_DIMENSION_LAYERS
+        assert "people" not in STANDARD_DIMENSION_LAYERS

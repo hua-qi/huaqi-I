@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from huaqi_src.layers.data.raw_signal.models import RawSignal
 from huaqi_src.layers.growth.telos.manager import TelosManager
@@ -34,6 +34,8 @@ class Step1Output(BaseModel):
     strong_reason: Optional[str]
     summary: str
     new_dimension_hint: Optional[str]
+    has_people: bool = False
+    mentioned_names: List[str] = Field(default_factory=list)
 
     @field_validator("intensity")
     @classmethod
@@ -62,6 +64,17 @@ class Step5Output(BaseModel):
     title: Optional[str]
 
 
+class CombinedStepOutput(BaseModel):
+    should_update: bool
+    new_content: Optional[str]
+    consistency_score: float
+    history_entry: Optional[Dict[str, str]]
+    is_growth_event: bool
+    growth_title: Optional[str]
+    growth_narrative: Optional[str]
+    confidence: float = 0.0
+
+
 _STEP1_PROMPT = """\
 你是用户的个人成长分析师。
 你的任务是分析用户的输入信号，判断它对用户的自我认知有什么影响。
@@ -87,7 +100,9 @@ _STEP1_PROMPT = """\
   "signal_strength": "strong|medium|weak",
   "strong_reason": "...",
   "summary": "...",
-  "new_dimension_hint": null
+  "new_dimension_hint": null,
+  "has_people": true/false,
+  "mentioned_names": ["姓名1", "姓名2"]
 }}"""
 
 _STEP3_PROMPT = """\
@@ -151,6 +166,73 @@ _STEP5_PROMPT = """\
   "narrative": "...",
   "title": "..."
 }}"""
+
+_REVIEW_STALE_PROMPT = """\
+你是用户的个人成长分析师。
+该维度已超过 {days} 天没有收到新信号。
+请判断当前认知是否可能已经过时。
+
+维度：{dimension}
+当前认知：
+{current_content}
+
+请判断：
+1. 内容是否可能已过时？（考虑时间流逝、人的变化、情境变化）
+2. 如果过时，置信度应该降低多少？（new_consistency_score 应在 0.0~0.6 之间）
+3. 如果仍然有效，维持 consistency_score 不变
+
+输出合法 JSON，不要有任何额外文字：
+{{
+  "is_stale": true/false,
+  "new_consistency_score": 0.0-1.0,
+  "reason": "..."
+}}\
+"""
+
+
+class ReviewOutput(BaseModel):
+    is_stale: bool
+    new_consistency_score: float
+    reason: str
+
+
+_STEP345_COMBINED_PROMPT = """\
+你是用户的个人成长分析师兼见证者。
+请同时完成三件事：
+1. 判断是否应更新「{dimension}」维度的认知
+2. 如果更新，生成新的认知内容和历史记录
+3. 判断这次变化是否是值得记录的成长事件
+
+以下是当前对这个用户的了解：
+{telos_index}
+
+以下是最近 {days} 天，关于「{dimension}」维度的 {count} 条信号摘要：
+{signal_summaries}
+
+当前该维度的认知是：
+{current_content}
+
+判断标准（成长事件）：
+- 核心层维度变化 → 几乎总是值得
+- 中间层维度的方向性转变 → 值得
+- 表面层的日常积累 → 通常不值得
+
+consistency_score 的含义：这些信号指向同一个方向的程度（0.0=完全矛盾，1.0=高度一致）
+
+输出合法 JSON，不要有任何额外文字：
+{{
+  "should_update": true/false,
+  "new_content": "...",
+  "consistency_score": 0.0-1.0,
+  "history_entry": {{
+    "change": "...",
+    "trigger": "..."
+  }},
+  "is_growth_event": true/false,
+  "growth_title": "...",
+  "growth_narrative": "..."
+}}\
+"""
 
 
 def _parse_json(text: str) -> dict:
@@ -262,6 +344,82 @@ class TelosEngine:
         response = self._llm.invoke(prompt)
         data = _parse_json(response.content)
         return Step5Output(**data)
+
+    def review_stale_dimension(
+        self,
+        dimension: str,
+        days_since_last_signal: int,
+    ) -> ReviewOutput:
+        dim = self._mgr.get(dimension)
+        prompt = _REVIEW_STALE_PROMPT.format(
+            days=days_since_last_signal,
+            dimension=dimension,
+            current_content=dim.content,
+        )
+        response = self._llm.invoke(prompt)
+        data = _parse_json(response.content)
+        result = ReviewOutput(**data)
+
+        if result.is_stale:
+            count_score = min(dim.update_count / 10, 1.0)
+            new_confidence = count_score * 0.4 + result.new_consistency_score * 0.6
+            entry = HistoryEntry(
+                version=dim.update_count + 1,
+                change=f"定时复审：{result.reason}",
+                trigger=f"超过 {days_since_last_signal} 天无新信号",
+                confidence=new_confidence,
+                updated_at=datetime.now(timezone.utc),
+            )
+            self._mgr.update(
+                name=dimension,
+                new_content=dim.content,
+                history_entry=entry,
+                confidence=new_confidence,
+            )
+
+        return result
+
+    async def step345_combined(
+        self,
+        dimension: str,
+        signal_summaries: List[str],
+        days: int,
+        recent_signal_count: int,
+    ) -> CombinedStepOutput:
+        dim = self._mgr.get(dimension)
+        prompt = _STEP345_COMBINED_PROMPT.format(
+            telos_index=self._telos_index(),
+            days=days,
+            dimension=dimension,
+            count=len(signal_summaries),
+            signal_summaries="\n".join(f"- {s}" for s in signal_summaries),
+            current_content=dim.content,
+        )
+        response = await self._llm.ainvoke(prompt)
+        data = _parse_json(response.content)
+        result = CombinedStepOutput(**data)
+
+        count_score = min(recent_signal_count / 10, 1.0)
+        consistency_score = result.consistency_score
+        result.confidence = count_score * 0.4 + consistency_score * 0.6
+
+        if result.should_update and result.new_content and result.history_entry:
+            version = dim.update_count + 1
+            entry = HistoryEntry(
+                version=version,
+                change=result.history_entry["change"],
+                trigger=result.history_entry["trigger"],
+                confidence=result.confidence,
+                updated_at=datetime.now(timezone.utc),
+            )
+            self._mgr.update(
+                name=dimension,
+                new_content=result.new_content,
+                history_entry=entry,
+                confidence=result.confidence,
+            )
+
+        return result
 
     def run_pipeline(
         self,

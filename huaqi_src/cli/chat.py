@@ -729,15 +729,13 @@ def run_langgraph_chat(thread_id: str = None):
                 bubble.render_ai_prefix(timestamp)
 
                 full_response = []
-                with Live(console=console, refresh_per_second=30, transient=True) as live:
+                with Live(console=console, refresh_per_second=30, transient=False) as live:
                     live.update("[dim]·  ·  ·[/dim]")
                     for chunk in agent.stream(user_input):
                         full_response.append(chunk)
                         live.update(Markdown("".join(full_response), style="bright_yellow"))
 
                 response_text = "".join(full_response)
-                if response_text:
-                    console.print(Markdown(response_text, style="bright_yellow"))
                 console.print()
                 turn_count += 1
 

@@ -43,13 +43,18 @@ huaqi-growing/
 │   │       ├── usage.md             # 系统概览与开发集成使用指南
 │   │       ├── code-standards.md    # 代码及目录规范
 │   │       └── cli-ui-improvements.md # CLI/UI 改进方案
-│   └── plans/                       # 项目开发、测试与实施计划
-│       ├── ROADMAP.md               # 项目演进路线图
-│       ├── 2026-*.md                # 历史各阶段计划
-│       └── ops/                     # 运维与工程落地文档
-│           ├── implementation-plan.md   # 实施计划
-│           ├── test-plan.md             # 测试计划
-│           └── migration-v2.md          # 数据迁移方案
+│   ├── plans/                       # 项目开发、测试与实施计划
+│   │   ├── ROADMAP.md               # 项目演进路线图
+│   │   ├── 2026-*.md                # 历史各阶段计划
+│   │   └── ops/                     # 运维与工程落地文档
+│   │       ├── implementation-plan.md   # 实施计划
+│   │       ├── test-plan.md             # 测试计划
+│   │       └── migration-v2.md          # 数据迁移方案
+│   └── iterations/                  # 迭代验收与 Bug 追踪
+│       ├── BUGLIST.md               # 全局 Bug 清单（仅关键链路 bug，跨迭代持续更新）
+│       └── 2026-10-04-telos-refactor/   # 特性迭代文件夹（YYYY-MM-DD-{特性名}）
+│           ├── acceptance.md        # 本次迭代验收文档
+│           └── buglist.md           # 本次迭代 Bug 清单
 ```
 
 ---
@@ -140,9 +145,125 @@ huaqi-growing/
 这个决策带来了哪些影响。
 ```
 
-### 3.4 README.md
+### 3.4 迭代验收文档（docs/iterations/{迭代名}/acceptance.md）
 
-**只放面向新用户的内容：**
+在确定设计方案后，由 agent 根据计划文档生成。迭代结束后，由 agent 逐条执行验收。
+
+```markdown
+# [特性名] 迭代验收
+
+**迭代标识**: 2026-10-04-telos-refactor
+**验收日期**: YYYY-MM-DD
+**关联计划**: [docs/plans/2026-10-04-telos-refactor.md](../../../plans/2026-10-04-telos-refactor.md)
+
+---
+
+## 功能 Checklist
+
+| # | 功能点 | 验证命令 | 通过条件 | 状态 |
+|---|--------|---------|---------|------|
+| 1 | Telos 初始化 | `pytest tests/unit/layers/growth/test_telos_engine.py` | exit code 0，无 FAILED | ✅ |
+| 2 | 人际关系图写入 | `pytest tests/unit/layers/growth/people/` | exit code 0 | ⚠️ |
+| 3 | CLI 对话触发调度 | `huaqi chat "test"` | 日志中出现 `scheduler triggered` | ❌ |
+
+状态取值：`✅` 已验证通过 / `❌` 未完成 / `⚠️` 有问题（见已知问题）
+
+---
+
+## Out of Scope
+
+本次迭代明确不包含：
+- XXX（原因：留到下一迭代）
+
+---
+
+## 已知问题 / 遗留事项
+
+| ID | 描述 | 优先级 | 处理方式 |
+|----|------|--------|---------|
+| B-001 | XXX 场景下偶现崩溃 | P1 | 已录入全局 BUGLIST，下迭代修复 |
+
+---
+
+## 验证环境
+
+- Python 版本: 3.x
+- 测试命令: `pytest tests/ -x`
+```
+
+**规则：**
+- 验证命令必须可直接执行，通过条件必须可客观判断（exit code、输出关键词等）
+- agent 执行验收时逐行运行验证命令，对照通过条件填写状态
+- 发现的问题录入本迭代 `buglist.md`，同时同步到全局 `BUGLIST.md`
+
+### 3.5 迭代 Bug 清单（docs/iterations/{迭代名}/buglist.md）
+
+记录本次迭代发现的所有 bug，支持多轮循环修复，按轮次分节追加。
+
+```markdown
+# [特性名] 迭代 Bug 清单
+
+**所属迭代**: 2026-10-04-telos-refactor
+
+---
+
+## Round 1 - YYYY-MM-DD
+
+| ID | 描述 | 复现命令 | 优先级 | 状态 |
+|----|------|---------|--------|------|
+| B-003 | Telos engine 初始化失败 | `pytest tests/unit/layers/growth/test_telos_engine.py` | P1 | fixed |
+| B-004 | 人际关系图节点重复写入 | `pytest tests/unit/layers/growth/people/` | P2 | open |
+
+## Round 2 - YYYY-MM-DD
+
+| ID | 描述 | 复现命令 | 优先级 | 状态 |
+|----|------|---------|--------|------|
+| B-004 | 人际关系图节点重复写入 | `pytest tests/unit/layers/growth/people/` | P2 | fixed |
+| B-005 | XXX 新发现问题 | `pytest tests/xxx` | P1 | open |
+```
+
+**Agent 操作规范：**
+- 每轮开始前：检查上轮所有 `open` 条目，验证是否已修复，更新状态
+- 每轮结束时：将新发现的 bug 追加到新节，状态为 `open`
+- 终止条件：当前轮无新 `open` 条目
+- 影响关键链路的 bug 同步录入全局 `BUGLIST.md`
+
+### 3.6 全局 Bug 清单（docs/iterations/BUGLIST.md）
+
+仅收录影响关键链路的 bug，每次迭代验收时必须逐条回归验证。
+
+```markdown
+# 全局 Bug 清单
+
+> 仅收录影响关键链路的 bug，每次迭代验收时必须逐条回归验证。
+
+## 活跃 Bug
+
+| ID | 描述 | 优先级 | 状态 | 发现迭代 | 修复迭代 |
+|----|------|--------|------|---------|---------|
+| B-001 | XXX 场景崩溃 | P1 | open | 2026-10-04-telos-refactor | - |
+
+## 回归记录
+
+| ID | 迭代 | 验证结果 | 备注 |
+|----|------|---------|------|
+| B-001 | 2026-11-04-telos-next | ⚠️ 仍存在 | 触发条件未变化 |
+| B-001 | 2026-10-04-telos-refactor | ❌ 发现 | 首次记录 |
+
+## 已关闭 Bug
+
+| ID | 描述 | 关闭原因 | 关闭迭代 |
+|----|------|---------|---------|
+| B-002 | YYY 乱码 | 已修复验证通过 | 2026-11-04-telos-next |
+```
+
+**规则：**
+- ID 全局唯一，格式 `B-NNN`，由本文件统一递增分配
+- 优先级：`P0`（阻塞） / `P1`（严重） / `P2`（一般）
+- 状态：`open` / `fixed` / `verified` / `wontfix`
+- 每次迭代验收时，agent 必须对活跃 bug 逐条执行回归验证并追加回归记录
+
+### 3.7 README.md
 - 项目是什么（1-2 句话）
 - 核心特性（表格，最多 7 条）
 - 快速开始（3 步以内）
@@ -163,6 +284,7 @@ huaqi-growing/
 | docs/guides/ | 小写，连字符 | `cli-guide.md` |
 | docs/ops/ | 小写，连字符 | `migration-v2.md` |
 | docs/design/adr/ | `ADR-NNN-短标题.md` | `ADR-002-langgraph-adoption.md` |
+| docs/iterations/ | 迭代文件夹：`YYYY-MM-DD-{特性名}`，连字符小写 | `2026-10-04-telos-refactor/` |
 
 ---
 
@@ -190,3 +312,7 @@ huaqi-growing/
 - [ ] 文档命名遵循了第四节的约定吗？
 - [ ] 如果修改了 CLI 命令，`docs/guides/user/cli-guide.md` 是否同步更新了？
 - [ ] 如果涉及架构变化，`docs/design/ARCHITECTURE.md` 是否需要更新？
+- [ ] 本次特性迭代是否需要新建 `docs/iterations/{迭代名}/` 文件夹？
+- [ ] `acceptance.md` 是否已填写全部功能 Checklist（含验证命令和通过条件）？
+- [ ] 迭代中发现的新 bug 是否已录入 `buglist.md` 并将关键链路 bug 同步到全局 `BUGLIST.md`？
+- [ ] 全局 `BUGLIST.md` 中的活跃 Bug 是否在本迭代完成了回归验证并追加了回归记录？

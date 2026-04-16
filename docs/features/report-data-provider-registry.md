@@ -26,6 +26,7 @@ huaqi_src/reports/
     ├── __init__.py             # DataProvider 基类 + 全局注册表
     ├── world.py                # 世界新闻
     ├── diary.py                # 日记
+    ├── work_log.py             # 工作日志（codeflicker 会话）
     ├── people.py               # 人际关系
     ├── learning.py             # 学习进度
     ├── growth.py               # 成长目标
@@ -169,5 +170,5 @@ def _register_providers(self) -> None:
 
 ---
 
-**文档版本**: v1.1
-**最后更新**: 2026-05-04
+**文档版本**: v1.2
+**最后更新**: 2026-04-15

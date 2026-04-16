@@ -1,108 +1,60 @@
-"""APScheduler 定时任务管理器
+"""APScheduler 定时任务管理器（APScheduler v4）
 
 提供定时任务的增删改查和持久化功能
 """
 
 import asyncio
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler import AsyncScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.events import (
-    EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_MISSED,
-    JobExecutionEvent
-)
+from apscheduler.triggers.date import DateTrigger
 
 
 class SchedulerManager:
-    """定时任务管理器
-    
-    功能：
-    - 添加/删除/暂停/恢复任务
-    - 支持 cron/interval/date 触发器
-    - 任务持久化到 SQLite
-    - 任务执行日志
+    """定时任务管理器（APScheduler v4）
+
+    使用 AsyncScheduler.run_until_stopped() 驱动任务循环，
+    运行在独立后台线程的 asyncio event loop 中。
     """
-    
+
     def __init__(
         self,
         db_path: Optional[Path] = None,
         timezone: str = "Asia/Shanghai",
     ):
-        """初始化调度器
-        
-        Args:
-            db_path: 任务持久化数据库路径
-            timezone: 时区
-        """
         if db_path is None:
             from ..config.paths import get_scheduler_db_path
             db_path = get_scheduler_db_path()
-        
+
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         self.timezone = timezone
-        self._scheduler: Optional[AsyncIOScheduler] = None
-        self._job_listeners: List[Callable] = []
-    
-    @property
-    def scheduler(self) -> AsyncIOScheduler:
-        """获取或创建调度器"""
-        if self._scheduler is None:
-            # 配置 job store
-            jobstores = {
-                'default': SQLAlchemyJobStore(
-                    url=f'sqlite:///{self.db_path}',
-                    tablename='apscheduler_jobs'
-                )
-            }
-            
-            self._scheduler = AsyncIOScheduler(
-                jobstores=jobstores,
-                timezone=self.timezone,
-            )
-            
-            # 添加事件监听
-            self._scheduler.add_listener(
-                self._on_job_executed,
-                EVENT_JOB_EXECUTED
-            )
-            self._scheduler.add_listener(
-                self._on_job_error,
-                EVENT_JOB_ERROR | EVENT_JOB_MISSED
-            )
-        
-        return self._scheduler
-    
-    def _on_job_executed(self, event: JobExecutionEvent):
-        """任务执行成功回调"""
-        print(f"[Scheduler] 任务执行成功: {event.job_id} at {event.scheduled_run_time}")
-        for listener in self._job_listeners:
-            try:
-                listener('executed', event.job_id, event)
-            except:
-                pass
-    
-    def _on_job_error(self, event: JobExecutionEvent):
-        """任务执行失败回调"""
-        exception = getattr(event, 'exception', None)
-        print(f"[Scheduler] 任务执行失败: {event.job_id}, 异常: {exception}")
-        for listener in self._job_listeners:
-            try:
-                listener('error', event.job_id, event)
-            except:
-                pass
-    
-    def add_listener(self, callback: Callable):
-        """添加任务事件监听器"""
-        self._job_listeners.append(callback)
-    
+        self._scheduler: Optional[AsyncScheduler] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event: Optional[asyncio.Event] = None
+        self._running = False
+
+    def _make_scheduler(self) -> AsyncScheduler:
+        try:
+            from apscheduler.datastores.sqlalchemy import SQLAlchemyDataStore
+            data_store = SQLAlchemyDataStore(f"sqlite:///{self.db_path}")
+            return AsyncScheduler(data_store=data_store)
+        except Exception:
+            return AsyncScheduler()
+
+    def _run_in_loop(self, coro):
+        if not self._running or self._loop is None:
+            return None
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=10)
+
     def add_cron_job(
         self,
         job_id: str,
@@ -112,32 +64,24 @@ class SchedulerManager:
         kwargs: Optional[Dict] = None,
         replace_existing: bool = True,
     ) -> bool:
-        """添加 Cron 定时任务
-        
-        Args:
-            job_id: 任务唯一ID
-            func: 执行函数
-            cron: cron 表达式 (如 "0 8 * * *" 每天早上8点)
-            args: 函数位置参数
-            kwargs: 函数关键字参数
-            replace_existing: 是否替换已存在的任务
-        """
         try:
             trigger = CronTrigger.from_crontab(cron, timezone=self.timezone)
-            
-            self.scheduler.add_job(
-                func=func,
-                trigger=trigger,
-                id=job_id,
-                args=args,
-                kwargs=kwargs or {},
-                replace_existing=replace_existing,
+            from apscheduler import ConflictPolicy
+            policy = ConflictPolicy.replace if replace_existing else ConflictPolicy.do_nothing
+            self._run_in_loop(
+                self._scheduler.add_schedule(
+                    func, trigger,
+                    id=job_id,
+                    args=list(args),
+                    kwargs=kwargs or {},
+                    conflict_policy=policy,
+                )
             )
             return True
         except Exception as e:
             print(f"添加定时任务失败: {e}")
             return False
-    
+
     def add_interval_job(
         self,
         job_id: str,
@@ -149,33 +93,24 @@ class SchedulerManager:
         kwargs: Optional[Dict] = None,
         replace_existing: bool = True,
     ) -> bool:
-        """添加间隔任务
-        
-        Args:
-            job_id: 任务ID
-            func: 执行函数
-            seconds/minutes/hours: 间隔时间
-        """
         try:
-            trigger = IntervalTrigger(
-                seconds=seconds,
-                minutes=minutes,
-                hours=hours,
-            )
-            
-            self.scheduler.add_job(
-                func=func,
-                trigger=trigger,
-                id=job_id,
-                args=args,
-                kwargs=kwargs or {},
-                replace_existing=replace_existing,
+            trigger = IntervalTrigger(seconds=seconds + minutes * 60 + hours * 3600)
+            from apscheduler import ConflictPolicy
+            policy = ConflictPolicy.replace if replace_existing else ConflictPolicy.do_nothing
+            self._run_in_loop(
+                self._scheduler.add_schedule(
+                    func, trigger,
+                    id=job_id,
+                    args=list(args),
+                    kwargs=kwargs or {},
+                    conflict_policy=policy,
+                )
             )
             return True
         except Exception as e:
             print(f"添加间隔任务失败: {e}")
             return False
-    
+
     def add_date_job(
         self,
         job_id: str,
@@ -184,138 +119,135 @@ class SchedulerManager:
         args: tuple = (),
         kwargs: Optional[Dict] = None,
     ) -> bool:
-        """添加一次性任务
-        
-        Args:
-            job_id: 任务ID
-            func: 执行函数
-            run_date: 执行时间
-        """
         try:
-            trigger = DateTrigger(run_date=run_date)
-            
-            self.scheduler.add_job(
-                func=func,
-                trigger=trigger,
-                id=job_id,
-                args=args,
-                kwargs=kwargs or {},
+            trigger = DateTrigger(run_time=run_date)
+            from apscheduler import ConflictPolicy
+            self._run_in_loop(
+                self._scheduler.add_schedule(
+                    func, trigger,
+                    id=job_id,
+                    args=list(args),
+                    kwargs=kwargs or {},
+                    conflict_policy=ConflictPolicy.replace,
+                )
             )
             return True
         except Exception as e:
             print(f"添加定时任务失败: {e}")
             return False
-    
+
     def remove_job(self, job_id: str) -> bool:
-        """删除任务"""
         try:
-            self.scheduler.remove_job(job_id)
+            self._run_in_loop(self._scheduler.remove_schedule(job_id))
             return True
         except Exception as e:
             print(f"删除任务失败: {e}")
             return False
-    
+
     def pause_job(self, job_id: str) -> bool:
-        """暂停任务"""
         try:
-            self.scheduler.pause_job(job_id)
+            self._run_in_loop(self._scheduler.pause_schedule(job_id))
             return True
         except Exception as e:
             print(f"暂停任务失败: {e}")
             return False
-    
+
     def resume_job(self, job_id: str) -> bool:
-        """恢复任务"""
         try:
-            self.scheduler.resume_job(job_id)
+            self._run_in_loop(self._scheduler.unpause_schedule(job_id))
             return True
         except Exception as e:
             print(f"恢复任务失败: {e}")
             return False
-    
+
     def get_job(self, job_id: str) -> Optional[Dict]:
-        """获取任务信息"""
         try:
-            job = self.scheduler.get_job(job_id)
-            if job is None:
+            schedule = self._run_in_loop(self._scheduler.get_schedule(job_id))
+            if schedule is None:
                 return None
-            
             return {
-                "id": job.id,
-                "name": job.name,
-                "next_run_time": job.next_run_time,
-                "trigger": str(job.trigger),
+                "id": schedule.id,
+                "name": str(schedule.task_id),
+                "next_run_time": schedule.next_fire_time,
+                "trigger": str(schedule.trigger),
             }
         except Exception as e:
             print(f"获取任务失败: {e}")
             return None
-    
+
     def list_jobs(self) -> List[Dict]:
-        """列出所有任务"""
-        if self._scheduler is None:
+        if not self._running or self._scheduler is None:
             return []
         try:
-            jobs = self._scheduler.get_jobs()
+            schedules = self._run_in_loop(self._scheduler.get_schedules())
             return [
                 {
-                    "id": job.id,
-                    "name": job.name,
-                    "next_run_time": job.next_run_time,
-                    "trigger": str(job.trigger),
+                    "id": s.id,
+                    "name": str(s.task_id),
+                    "next_run_time": s.next_fire_time,
+                    "trigger": str(s.trigger),
                 }
-                for job in jobs
+                for s in (schedules or [])
             ]
         except Exception as e:
             print(f"列出任务失败: {e}")
             return []
-    
+
     def start(self):
-        """启动调度器"""
-        if not self.scheduler.running:
+        if self._running:
+            return
+
+        self._scheduler = self._make_scheduler()
+        ready_event = threading.Event()
+
+        def _run_loop():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
             try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # No event loop, so run it using asyncio.run
-                import threading
-                
-                def _start_async_scheduler():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    async def _run_scheduler():
-                        self.scheduler.start()
-                        while True:
-                            await asyncio.sleep(3600)
-                            
-                    loop.run_until_complete(_run_scheduler())
-                    
-                t = threading.Thread(target=_start_async_scheduler, daemon=True)
-                t.start()
-                print(f"[Scheduler] 调度器已启动，时区: {self.timezone}")
-                return
-                
-            self.scheduler.start()
-            print(f"[Scheduler] 调度器已启动，时区: {self.timezone}")
-    
+                self._loop.run_until_complete(self._async_run(ready_event))
+            except Exception as e:
+                print(f"[Scheduler] 调度器异常退出: {e}")
+            finally:
+                self._running = False
+
+        self._thread = threading.Thread(target=_run_loop, daemon=False)
+        self._thread.start()
+        ready_event.wait(timeout=15)
+        if not self._running:
+            print("[Scheduler] 调度器启动失败")
+            return
+        print(f"[Scheduler] 调度器已启动，时区: {self.timezone}")
+
+    async def _async_run(self, ready_event: threading.Event):
+        self._stop_event = asyncio.Event()
+
+        async def _wait_for_stop():
+            await self._stop_event.wait()
+            await self._scheduler.stop()
+
+        self._running = True
+        ready_event.set()
+
+        asyncio.get_event_loop().create_task(_wait_for_stop())
+        await self._scheduler.run_until_stopped()
+
     def shutdown(self, wait: bool = True):
-        """关闭调度器"""
-        if self.scheduler.running:
-            self.scheduler.shutdown(wait=wait)
-            print("[Scheduler] 调度器已关闭")
-    
+        if not self._running or self._loop is None or self._stop_event is None:
+            return
+        self._loop.call_soon_threadsafe(self._stop_event.set)
+        if wait and self._thread:
+            self._thread.join(timeout=15)
+        self._running = False
+        print("[Scheduler] 调度器已关闭")
+
     def is_running(self) -> bool:
-        """检查调度器是否运行中"""
-        if self._scheduler is None:
-            return False
-        return self._scheduler.running
+        return self._running
 
 
-# 单例
 _scheduler_manager: Optional[SchedulerManager] = None
 
 
 def get_scheduler_manager() -> SchedulerManager:
-    """获取调度器管理器单例"""
     global _scheduler_manager
     if _scheduler_manager is None:
         _scheduler_manager = SchedulerManager()

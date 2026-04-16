@@ -578,3 +578,37 @@ def google_search_tool(query: str) -> str:
     if "ratelimit" in msg or "rate limit" in msg or "202" in msg or "0x304" in msg or "unsupported protocol" in msg:
         return "搜索频率过高，请稍后再试"
     return f"搜索失败: {str(last_err)[:80]}"
+
+
+@register_tool
+@tool
+def search_memory_tool(query: str) -> str:
+    """语义检索用户的原始日记/笔记内容（RawSignal 原文）。
+    当用户询问「我之前记录过什么」「我写过关于XX的内容」时使用。
+    与 search_diary_tool 的区别：本工具检索所有来源的原始记录，包括自动采集的信号。
+    """
+    from huaqi_src.layers.data.raw_signal.store import RawSignalStore
+    from huaqi_src.layers.data.memory.vector import get_embedding_service
+    from huaqi_src.config.adapters.storage import SQLiteStorageAdapter
+    from huaqi_src.config.paths import get_data_dir
+
+    data_dir = get_data_dir()
+    if data_dir is None:
+        return f"未找到关于 '{query}' 的记忆（数据目录未设置）。"
+
+    try:
+        embedder = get_embedding_service()
+        query_vec = embedder.encode(query)
+        query_vec_list = query_vec.tolist() if hasattr(query_vec, "tolist") else list(query_vec)
+
+        adapter = SQLiteStorageAdapter(db_path=data_dir / "raw_signals.db")
+        store = RawSignalStore(adapter=adapter)
+        results = store.search_by_embedding(user_id="default", query_vec=query_vec_list, top_k=5)
+
+        if not results:
+            return f"未找到关于 '{query}' 的相关记忆。"
+
+        formatted = [f"[{r.timestamp.strftime('%Y-%m-%d')}] {r.content[:200]}" for r in results]
+        return "找到以下相关记忆：\n\n" + "\n---\n".join(formatted)
+    except Exception as e:
+        return f"记忆检索失败：{str(e)[:100]}"

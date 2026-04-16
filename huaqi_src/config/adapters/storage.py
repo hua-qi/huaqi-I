@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS raw_signals (
     processed    INTEGER DEFAULT 0,
     distilled    INTEGER DEFAULT 0,
     vectorized   INTEGER DEFAULT 0,
+    embedding    TEXT,
     created_at   TEXT NOT NULL
 );
 
@@ -38,6 +39,8 @@ def _row_to_signal(row: sqlite3.Row) -> RawSignal:
     d["vectorized"] = bool(d["vectorized"])
     if d.get("metadata"):
         d["metadata"] = json.loads(d["metadata"])
+    if d.get("embedding"):
+        d["embedding"] = json.loads(d["embedding"])
     return RawSignal(**{k: v for k, v in d.items() if k != "created_at"})
 
 
@@ -58,13 +61,14 @@ class SQLiteStorageAdapter(StorageAdapter):
 
     def save(self, signal: RawSignal) -> None:
         metadata = json.dumps(signal.metadata, ensure_ascii=False) if signal.metadata is not None else None
+        embedding = json.dumps(signal.embedding) if signal.embedding is not None else None
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR IGNORE INTO raw_signals
                 (id, user_id, source_type, timestamp, ingested_at, content,
-                 metadata, raw_file_ref, processed, distilled, vectorized, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 metadata, raw_file_ref, processed, distilled, vectorized, embedding, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     signal.id,
@@ -78,6 +82,7 @@ class SQLiteStorageAdapter(StorageAdapter):
                     int(signal.processed),
                     int(signal.distilled),
                     int(signal.vectorized),
+                    embedding,
                     signal.ingested_at.isoformat(),
                 ),
             )

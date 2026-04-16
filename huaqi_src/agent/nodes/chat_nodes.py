@@ -18,6 +18,18 @@ from huaqi_src.layers.data.profile.manager import get_profile_manager
 logger = logging.getLogger(__name__)
 
 
+def _get_telos_manager():
+    try:
+        from huaqi_src.config.paths import get_telos_dir
+        from huaqi_src.layers.growth.telos.manager import TelosManager
+        telos_dir = get_telos_dir()
+        if not telos_dir.exists():
+            return None
+        return TelosManager(telos_dir=telos_dir, git_commit=False)
+    except Exception:
+        return None
+
+
 INTENT_PATTERNS = {
     INTENT_DIARY: [
         r".*?(写日记|查看日记|日记列表|搜索日记).*?",
@@ -61,10 +73,6 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
 
 
 def build_context(state: AgentState) -> Dict[str, Any]:
-    """构建上下文节点
-
-    组装系统提示词、人格画像、记忆、用户画像等
-    """
     personality_context = state.get("personality_context", "")
 
     user_profile_context = ""
@@ -74,9 +82,20 @@ def build_context(state: AgentState) -> Dict[str, Any]:
     except Exception:
         pass
 
+    telos_snapshot = ""
+    try:
+        telos_mgr = _get_telos_manager()
+        if telos_mgr is not None:
+            from huaqi_src.layers.growth.telos.context import TelosContextBuilder
+            builder = TelosContextBuilder(telos_manager=telos_mgr)
+            telos_snapshot = builder.build_telos_snapshot()
+    except Exception:
+        pass
+
     system_prompt = build_system_prompt(
         personality_context,
         user_profile_context,
+        telos_snapshot,
     )
 
     workflow_data = state.get("workflow_data", {})
@@ -88,8 +107,8 @@ def build_context(state: AgentState) -> Dict[str, Any]:
 def build_system_prompt(
     personality_context: Optional[str] = None,
     user_profile_context: Optional[str] = None,
+    telos_snapshot: Optional[str] = None,
 ) -> str:
-    """构建系统提示词"""
     base_prompt = """你是 Huaqi (花旗)，一个个人 AI 伴侣系统。
 
 你的职责：
@@ -113,6 +132,9 @@ def build_system_prompt(
 
     if user_profile_context:
         base_prompt += f"\n{user_profile_context}\n"
+
+    if telos_snapshot:
+        base_prompt += f"\n\n## 你对这个用户的了解\n\n{telos_snapshot}\n"
 
     return base_prompt
 
@@ -268,10 +290,9 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
         if llm_mgr is None:
             raise RuntimeError("未配置任何 LLM 提供商")
 
-        active_name = llm_mgr.get_active_provider()
-        if not active_name:
+        if not llm_mgr._configs:
             raise RuntimeError("未配置任何 LLM 提供商")
-        cfg = next(iter(llm_mgr._configs.values()))
+        cfg = llm_mgr._active_provider.config
 
         if "reasoner" in (cfg.model or "").lower():
             raise RuntimeError(

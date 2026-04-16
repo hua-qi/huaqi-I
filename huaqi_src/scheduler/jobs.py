@@ -12,10 +12,10 @@ def register_jobs(manager: SchedulerManager, store: ScheduledJobStore):
     enabled_ids = {job.id for job in jobs if job.enabled}
 
     try:
-        existing = manager.scheduler.get_jobs()
+        existing = manager.list_jobs()
         for apj in existing:
-            if apj.id not in enabled_ids:
-                manager.scheduler.remove_job(apj.id)
+            if apj["id"] not in enabled_ids:
+                manager.remove_job(apj["id"])
     except Exception as e:
         print(f"[Scheduler] 清理过期任务失败: {e}")
 
@@ -44,6 +44,24 @@ def process_pending_signals_job(
             pipeline.process(signal)
         except Exception:
             continue
+
+
+def register_distillation_job(
+    scheduler_adapter,
+    interval_seconds: int = 3600,
+    user_id: str = "default",
+    limit: int = 10,
+) -> None:
+    from huaqi_src.scheduler.distillation_job import run_distillation_job
+
+    def _job():
+        run_distillation_job(user_id=user_id, limit=limit)
+
+    scheduler_adapter.add_interval_job(
+        func=_job,
+        seconds=interval_seconds,
+        job_id="distillation_job",
+    )
 
 
 def vectorize_pending_signals_job(

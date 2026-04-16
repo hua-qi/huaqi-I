@@ -225,6 +225,13 @@ def test_archive_logs_to_meta(tmp_path):
     assert archive_ops[0].dimension == "health"
 
 
+@pytest.fixture
+def telos_manager(telos_dir: Path) -> TelosManager:
+    m = TelosManager(telos_dir=telos_dir, git_commit=False)
+    m.init()
+    return m
+
+
 def test_telos_manager_git_commit_on_update(tmp_path):
     import subprocess
     telos_dir = tmp_path / "telos"
@@ -253,3 +260,58 @@ def test_telos_manager_git_commit_on_update(tmp_path):
         capture_output=True, text=True,
     )
     assert "beliefs" in result.stdout
+
+
+class TestTelosManagerGetDimensionSnippet:
+    def test_get_snippet_contains_frontmatter_and_content(self, telos_dir, telos_manager):
+        snippet = telos_manager.get_dimension_snippet("beliefs")
+        assert "beliefs" in snippet
+        assert "## 当前认知" in snippet
+
+    def test_get_snippet_excludes_history(self, telos_dir, telos_manager):
+        from datetime import datetime, timezone
+        from huaqi_src.layers.growth.telos.models import HistoryEntry
+        entry = HistoryEntry(
+            version=1,
+            change="测试变化",
+            trigger="测试触发",
+            confidence=0.7,
+            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        telos_manager.update("beliefs", "新内容", entry, 0.7)
+        snippet = telos_manager.get_dimension_snippet("beliefs")
+        assert "## 更新历史" not in snippet
+
+    def test_get_all_snippets_returns_dict(self, telos_manager):
+        snippets = telos_manager.get_all_dimension_snippets()
+        assert isinstance(snippets, dict)
+        assert "beliefs" in snippets
+        assert "goals" in snippets
+
+
+def test_update_work_style_triggers_claude_md_writer_callback(manager, telos_dir):
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+    from huaqi_src.layers.growth.telos.models import HistoryEntry
+
+    manager.init()
+
+    mock_writer = MagicMock()
+    manager.on_work_style_updated = mock_writer.sync
+
+    manager.create_custom(
+        name="work_style",
+        layer=__import__(
+            "huaqi_src.layers.growth.telos.models", fromlist=["DimensionLayer"]
+        ).DimensionLayer.MIDDLE,
+        initial_content="（待积累）",
+    )
+    entry = HistoryEntry(
+        version=1,
+        change="初始化",
+        trigger="工作信号",
+        confidence=0.6,
+        updated_at=datetime.now(timezone.utc),
+    )
+    manager.update("work_style", "新工作风格内容", entry, 0.7)
+    mock_writer.sync.assert_called_once()

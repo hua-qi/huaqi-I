@@ -59,8 +59,9 @@ class CourseGenerator:
         llm_mgr = build_llm_manager(temperature=0.7, max_tokens=600)
         if llm_mgr is None:
             raise RuntimeError("未配置任何 LLM 提供商")
-        active_name = llm_mgr.get_active_provider()
-        cfg = llm_mgr._configs[active_name]
+        if not llm_mgr._active_provider:
+            raise RuntimeError("未配置任何 LLM 提供商")
+        cfg = llm_mgr._active_provider.config
         return ChatOpenAI(
             model=cfg.model,
             api_key=cfg.api_key,

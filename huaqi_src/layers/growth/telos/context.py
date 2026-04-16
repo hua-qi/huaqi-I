@@ -45,14 +45,15 @@ class TelosContextBuilder:
         self._vector_search = vector_search
 
     def build_telos_snapshot(self) -> str:
-        index_path = self._mgr._dir / "INDEX.md"
-        if index_path.exists():
-            return index_path.read_text(encoding="utf-8")
-        dims = self._mgr.list_active()
-        lines = ["# 当前 TELOS 快照", ""]
-        for d in dims:
-            lines.append(f"- {d.name}（{d.layer.value}层，置信度 {d.confidence}）：{d.content[:60]}")
-        return "\n".join(lines)
+        snippets = self._mgr.get_all_dimension_snippets()
+        if not snippets:
+            return ""
+        parts = ["## 核心认知（TELOS）", ""]
+        for name, snippet in snippets.items():
+            if snippet:
+                parts.append(snippet)
+                parts.append("")
+        return "\n".join(parts).strip()
 
     def build_relevant_history(
         self,

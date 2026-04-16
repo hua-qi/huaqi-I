@@ -36,10 +36,9 @@ class PersonExtractor:
         if llm_mgr is None:
             return "[]"
 
-        active_name = llm_mgr.get_active_provider()
-        if not active_name:
+        if not llm_mgr._active_provider:
             return "[]"
-        cfg = llm_mgr._configs[active_name]
+        cfg = llm_mgr._active_provider.config
 
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage

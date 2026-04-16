@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "mcp__xp-local-mcp__search_experience",
+      "mcp__xp-local-mcp__save_experience"
+    ]
+  }
+}

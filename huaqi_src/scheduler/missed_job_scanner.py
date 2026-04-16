@@ -54,15 +54,15 @@ class MissedJobScanner:
         until: datetime.datetime,
     ) -> List[datetime.datetime]:
         tz = ZoneInfo(self.timezone)
-        trigger = CronTrigger.from_crontab(cron, timezone=self.timezone)
 
         since_aware = since.replace(tzinfo=tz) if since.tzinfo is None else since.astimezone(tz)
         until_aware = until.replace(tzinfo=tz) if until.tzinfo is None else until.astimezone(tz)
 
+        trigger = CronTrigger.from_crontab(cron, timezone=self.timezone, start_time=since_aware)
+
         fire_times = []
-        current = since_aware
         while True:
-            next_time = trigger.get_next_fire_time(None, current)
+            next_time = trigger.next()
             if next_time is None:
                 break
             next_local = next_time.astimezone(tz).replace(tzinfo=None)
@@ -70,5 +70,4 @@ class MissedJobScanner:
             if next_local > until_naive:
                 break
             fire_times.append(next_local)
-            current = next_time + datetime.timedelta(seconds=1)
         return fire_times

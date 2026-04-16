@@ -69,14 +69,14 @@ class OnboardingTelosGenerator:
                     version=1,
                     change="冷启动自述初始化",
                     trigger="用户问卷回答",
-                    confidence=0.5,
+                    confidence=0.4,
                     updated_at=datetime.now(timezone.utc),
                 )
                 self._mgr.update(
                     name=dim_name,
                     new_content=content,
                     history_entry=entry,
-                    confidence=0.5,
+                    confidence=0.4,
                 )
             except Exception:
                 continue

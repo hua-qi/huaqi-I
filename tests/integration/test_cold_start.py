@@ -54,12 +54,12 @@ def meta_manager(telos_dir: Path) -> MetaManager:
 # ── 测试：问卷结构 ────────────────────────────────────────────────────────────
 
 class TestOnboardingQuestions:
-    def test_ten_questions_defined(self):
-        assert len(ONBOARDING_QUESTIONS) == 10
+    def test_five_questions_defined(self):
+        assert len(ONBOARDING_QUESTIONS) == 5
 
     def test_each_question_has_dimension(self):
         for q in ONBOARDING_QUESTIONS:
-            assert q.dimension in STANDARD_DIMENSIONS + ["meta"]
+            assert q.dimension in STANDARD_DIMENSIONS + ["meta", "people"]
 
     def test_each_question_has_text(self):
         for q in ONBOARDING_QUESTIONS:
@@ -68,8 +68,8 @@ class TestOnboardingQuestions:
     def test_goals_is_first_question(self):
         assert ONBOARDING_QUESTIONS[0].dimension == "goals"
 
-    def test_meta_is_last_question(self):
-        assert ONBOARDING_QUESTIONS[-1].dimension == "meta"
+    def test_people_is_last_question(self):
+        assert ONBOARDING_QUESTIONS[-1].dimension == "people"
 
 
 # ── 测试：OnboardingSession ───────────────────────────────────────────────────
@@ -116,12 +116,12 @@ class TestOnboardingSession:
         session = OnboardingSession()
         session.answer("完成 MVP")
         session.skip()
-        session.answer("最近学到了 LangGraph")
+        session.answer("我是一个追求简洁的人")
 
         pairs = session.get_answered_pairs()
         assert len(pairs) == 2
         assert any(p.dimension == "goals" for p in pairs)
-        assert any(p.dimension == "learned" for p in pairs)
+        assert any(p.dimension == "narratives" for p in pairs)
 
     def test_skipped_dimension_not_in_answered_pairs(self):
         session = OnboardingSession()
@@ -209,7 +209,7 @@ class TestOnboardingTelosGenerator:
         generator.generate(session)
 
         goals_dim = telos_manager.get("goals")
-        assert goals_dim.confidence == 0.5
+        assert goals_dim.confidence == 0.4
 
     def test_skipped_questions_keep_placeholder_content(self, telos_manager):
         mock_llm = MagicMock()
@@ -313,19 +313,16 @@ class TestFullColdStartFlow:
         session = OnboardingSession()
         session.answer("完成 MVP")
         session.skip()
-        session.skip()
-        for _ in range(3):
-            session.skip()
         session.answer("我是一个慢热但持久的人")
-        for _ in range(3):
-            session.skip()
+        session.skip()
+        session.skip()
 
         generator.generate(session)
 
         goals_dim = telos_manager.get("goals")
-        assert goals_dim.confidence == 0.5
+        assert goals_dim.confidence == 0.4
         narratives_dim = telos_manager.get("narratives")
-        assert narratives_dim.confidence == 0.5
+        assert narratives_dim.confidence == 0.4
 
     def test_onboarding_mode_then_chat_mode(self):
         assert INTERACTION_MODE_ONBOARDING == "onboarding"

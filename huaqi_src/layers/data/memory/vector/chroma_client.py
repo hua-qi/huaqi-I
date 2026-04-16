@@ -1,12 +1,14 @@
 """Chroma 向量数据库客户端封装"""
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import chromadb
-from chromadb.api.models.Collection import Collection
-from chromadb.config import Settings
+if TYPE_CHECKING:
+    import chromadb
+    from chromadb.api.models.Collection import Collection
 
 
 class ChromaClient:
@@ -38,10 +40,11 @@ class ChromaClient:
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(parents=True, exist_ok=True)
         
-        # 设置环境变量禁用 Chroma 自动下载 embedding 模型
+        import chromadb
+        from chromadb.config import Settings
+
         os.environ.setdefault("CHROMA_DEFAULT_EMBEDDING_FUNCTION", "none")
         
-        # 创建客户端
         self.client = chromadb.PersistentClient(
             path=str(self.persist_directory),
             settings=Settings(
@@ -52,7 +55,7 @@ class ChromaClient:
         
         self.collection_name = collection_name
         self._embedding_function = embedding_function
-        self._collection: Optional[Collection] = None
+        self._collection = None
     
     @property
     def collection(self) -> Collection:

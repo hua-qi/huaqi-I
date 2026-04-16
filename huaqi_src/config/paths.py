@@ -215,6 +215,11 @@ def get_world_dir() -> Path:
     return require_data_dir() / "world"
 
 
+def get_telos_dir() -> Path:
+    """获取 Telos 成长维度存储目录"""
+    return require_data_dir() / "telos"
+
+
 def get_scheduler_db_path() -> Path:
     """获取调度器数据库路径"""
     return require_data_dir() / "scheduler.db"

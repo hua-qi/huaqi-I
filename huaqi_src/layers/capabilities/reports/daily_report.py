@@ -45,10 +45,9 @@ class DailyReportAgent:
         if llm_mgr is None:
             return "（LLM 未配置，无法生成复盘）"
 
-        active_name = llm_mgr.get_active_provider()
-        if not active_name:
+        if not llm_mgr._active_provider:
             return "（未配置任何 LLM 提供商）"
-        cfg = llm_mgr._configs[active_name]
+        cfg = llm_mgr._active_provider.config
 
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(

@@ -103,7 +103,7 @@ class ChatAgent:
             return None
 
     def _make_config(self) -> dict:
-        return {"configurable": {"thread_id": self.thread_id}}
+        return {"configurable": {"thread_id": self.thread_id}, "recursion_limit": 50}
 
     def stream(self, user_input: str) -> Iterator[str]:
         """流式输出，逐 token yield 给调用方"""

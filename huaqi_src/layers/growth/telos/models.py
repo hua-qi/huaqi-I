@@ -17,7 +17,7 @@ class DimensionLayer(str, Enum):
 STANDARD_DIMENSIONS = [
     "beliefs", "models", "narratives",
     "goals", "challenges", "strategies",
-    "learned", "people", "shadows",
+    "learned", "shadows",
 ]
 
 STANDARD_DIMENSION_LAYERS: dict[str, DimensionLayer] = {
@@ -28,7 +28,6 @@ STANDARD_DIMENSION_LAYERS: dict[str, DimensionLayer] = {
     "challenges": DimensionLayer.MIDDLE,
     "strategies": DimensionLayer.MIDDLE,
     "learned": DimensionLayer.SURFACE,
-    "people": DimensionLayer.SURFACE,
     "shadows": DimensionLayer.SURFACE,
 }
 

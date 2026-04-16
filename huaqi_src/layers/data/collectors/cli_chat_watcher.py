@@ -23,6 +23,7 @@ class CLIChatWatcher:
         self,
         watch_paths: Optional[list[dict]] = None,
         data_dir: Optional[Path] = None,
+        work_signal_ingester=None,
     ):
         if data_dir is None:
             from huaqi_src.config.paths import require_data_dir
@@ -31,6 +32,7 @@ class CLIChatWatcher:
         self._watch_paths = watch_paths or self._load_watch_paths_from_config()
         self._observer: Optional[Observer] = None
         self._config = ConfigManager(self._data_dir)
+        self._work_signal_ingester = work_signal_ingester
 
     def _load_watch_paths_from_config(self) -> list[dict]:
         paths = []
@@ -124,6 +126,35 @@ class CLIChatWatcher:
         ).hexdigest()[:12]
 
         full_content = frontmatter + content
+
+        if self._work_signal_ingester is not None:
+            import asyncio
+            import threading
+
+            since: Optional[datetime.datetime] = None
+            if session.time_start:
+                try:
+                    since = datetime.datetime.fromisoformat(
+                        session.time_start.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    pass
+
+            def _run():
+                asyncio.run(self._work_signal_ingester.ingest(since=since))
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                t = threading.Thread(target=_run, daemon=True)
+                t.start()
+                t.join(timeout=30)
+            else:
+                asyncio.run(self._work_signal_ingester.ingest(since=since))
+
         return [HuaqiDocument(
             doc_id=doc_id,
             doc_type="cli_chat",

@@ -129,3 +129,15 @@ def test_google_search_tool_handles_rate_limit():
         result = google_search_tool.invoke({"query": "test"})
 
     assert "频率过高" in result
+
+
+def test_search_person_tool_in_registry():
+    from huaqi_src.agent.tools import _TOOL_REGISTRY
+    tool_names = [t.name for t in _TOOL_REGISTRY if hasattr(t, "name")]
+    assert "search_person_tool" in tool_names
+
+
+def test_search_memory_tool_in_registry():
+    from huaqi_src.agent.tools import _TOOL_REGISTRY
+    tool_names = [t.name for t in _TOOL_REGISTRY if hasattr(t, "name")]
+    assert "search_memory_tool" in tool_names

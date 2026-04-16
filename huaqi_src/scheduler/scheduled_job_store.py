@@ -26,50 +26,63 @@ class ScheduledJob(BaseModel):
         return v
 
 
-_DEFAULT_JOBS: List[dict] = [
-    {
-        "id": "morning_brief",
-        "display_name": "晨间简报",
-        "cron": "0 8 * * *",
-        "enabled": True,
-        "prompt": "请生成今日晨间简报，总结近期重点事项、今日日程安排和值得关注的信息。",
-    },
-    {
-        "id": "daily_report",
-        "display_name": "日终复盘",
-        "cron": "0 23 * * *",
-        "enabled": True,
-        "prompt": "请生成今日工作复盘报告，总结今天的聊天记录、完成的任务和学习内容。",
-    },
-    {
-        "id": "weekly_report",
-        "display_name": "周报",
-        "cron": "0 21 * * 0",
-        "enabled": True,
-        "prompt": "请生成本周周报，总结本周的工作、学习和成长轨迹。",
-    },
-    {
-        "id": "quarterly_report",
-        "display_name": "季报",
-        "cron": "0 22 28-31 3,6,9,12 *",
-        "enabled": True,
-        "prompt": "请生成本季度季报，回顾本季度的目标达成情况和成长轨迹。",
-    },
-    {
-        "id": "learning_daily_push",
-        "display_name": "学习推送",
-        "cron": "0 21 * * *",
-        "enabled": True,
-        "prompt": "请推送今日学习内容，从进行中的课程中选取一个知识点出题复习。",
-    },
-    {
-        "id": "world_fetch",
-        "display_name": "世界新闻采集",
-        "cron": "0 7 * * *",
-        "enabled": True,
-        "prompt": "请采集今日世界新闻并存储到本地。",
-    },
-]
+def _get_default_output_dir(subdir: str) -> str:
+    from huaqi_src.config.paths import get_data_dir
+    data_dir = get_data_dir()
+    if data_dir is not None:
+        return str(data_dir / "reports" / subdir)
+    return ""
+
+
+def _build_default_jobs() -> List[dict]:
+    return [
+        {
+            "id": "morning_brief",
+            "display_name": "晨间简报",
+            "cron": "0 8 * * *",
+            "enabled": True,
+            "prompt": "请生成今日晨间简报，总结近期重点事项、今日日程安排和值得关注的信息。",
+            "output_dir": _get_default_output_dir("daily"),
+        },
+        {
+            "id": "daily_report",
+            "display_name": "日终复盘",
+            "cron": "0 23 * * *",
+            "enabled": True,
+            "prompt": "请生成今日工作复盘报告，总结今天的聊天记录、完成的任务和学习内容。",
+            "output_dir": _get_default_output_dir("daily"),
+        },
+        {
+            "id": "weekly_report",
+            "display_name": "周报",
+            "cron": "0 21 * * 0",
+            "enabled": True,
+            "prompt": "请生成本周周报，总结本周的工作、学习和成长轨迹。",
+            "output_dir": _get_default_output_dir("weekly"),
+        },
+        {
+            "id": "quarterly_report",
+            "display_name": "季报",
+            "cron": "0 22 28-31 3,6,9,12 *",
+            "enabled": True,
+            "prompt": "请生成本季度季报，回顾本季度的目标达成情况和成长轨迹。",
+            "output_dir": _get_default_output_dir("quarterly"),
+        },
+        {
+            "id": "learning_daily_push",
+            "display_name": "学习推送",
+            "cron": "0 21 * * *",
+            "enabled": True,
+            "prompt": "请推送今日学习内容，从进行中的课程中选取一个知识点出题复习。",
+        },
+        {
+            "id": "world_fetch",
+            "display_name": "世界新闻采集",
+            "cron": "0 7 * * *",
+            "enabled": True,
+            "prompt": "请采集今日世界新闻并存储到本地。",
+        },
+    ]
 
 
 def _serialize_jobs(jobs: List[ScheduledJob]) -> list:
@@ -88,7 +101,7 @@ class ScheduledJobStore:
     def _ensure_initialized(self):
         if not self._path.exists():
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._write_raw(_DEFAULT_JOBS)
+            self._write_raw(_build_default_jobs())
 
     def _write_raw(self, data: list):
         tmp_path = self._path.with_suffix(".tmp")

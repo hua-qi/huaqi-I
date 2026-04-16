@@ -64,3 +64,42 @@ def test_retrieve_memories_falls_back_gracefully(tmp_path):
         result = nodes.retrieve_memories(state)
 
     assert result == {"recent_memories": []}
+
+
+class TestBuildContextWithTelos:
+    def test_build_context_injects_telos_snapshot(self, tmp_path):
+        from huaqi_src.agent.state import create_initial_state
+        from huaqi_src.agent.nodes.chat_nodes import build_context
+        from huaqi_src.config import paths as config_paths
+        from huaqi_src.layers.growth.telos.manager import TelosManager
+        from unittest.mock import patch
+        from datetime import datetime, timezone
+        from huaqi_src.layers.growth.telos.models import HistoryEntry
+
+        config_paths._USER_DATA_DIR = tmp_path
+        telos_dir = tmp_path / "telos"
+        telos_dir.mkdir()
+        mgr = TelosManager(telos_dir=telos_dir, git_commit=False)
+        mgr.init()
+        entry = HistoryEntry(
+            version=1, change="测试", trigger="测试",
+            confidence=0.8, updated_at=datetime.now(timezone.utc)
+        )
+        mgr.update("beliefs", "选择比努力更重要", entry, 0.8)
+
+        state = create_initial_state()
+        with patch("huaqi_src.agent.nodes.chat_nodes._get_telos_manager", return_value=mgr):
+            result = build_context(state)
+
+        system_prompt = result["workflow_data"]["system_prompt"]
+        assert "选择比努力更重要" in system_prompt
+
+    def test_build_context_falls_back_gracefully_when_no_telos(self, tmp_path):
+        from huaqi_src.agent.state import create_initial_state
+        from huaqi_src.agent.nodes.chat_nodes import build_context
+        from huaqi_src.config import paths as config_paths
+
+        config_paths._USER_DATA_DIR = tmp_path
+        state = create_initial_state()
+        result = build_context(state)
+        assert "system_prompt" in result["workflow_data"]

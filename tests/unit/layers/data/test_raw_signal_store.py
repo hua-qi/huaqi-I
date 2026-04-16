@@ -181,3 +181,33 @@ class TestStatusUpdates:
         results = store.query(RawSignalFilter(user_id="user_a", vectorized=0))
         assert len(results) == 1
         assert results[0].id == chat_signal.id
+
+
+class TestSearchByEmbedding:
+    def test_search_by_embedding_returns_top_k(self, store):
+        for i in range(5):
+            signal = RawSignal(
+                user_id="u1",
+                source_type=SourceType.JOURNAL,
+                timestamp=datetime.now(timezone.utc),
+                content=f"内容{i}",
+                embedding=[float(i), 0.0, 0.0],
+            )
+            store.save(signal)
+
+        query_vec = [4.0, 0.0, 0.0]
+        results = store.search_by_embedding(user_id="u1", query_vec=query_vec, top_k=2)
+        assert len(results) <= 2
+        assert all(hasattr(r, "content") for r in results)
+
+    def test_search_by_embedding_returns_empty_when_no_embeddings(self, store):
+        signal = RawSignal(
+            user_id="u1",
+            source_type=SourceType.JOURNAL,
+            timestamp=datetime.now(timezone.utc),
+            content="无向量内容",
+        )
+        store.save(signal)
+
+        results = store.search_by_embedding(user_id="u1", query_vec=[1.0, 0.0], top_k=3)
+        assert results == []

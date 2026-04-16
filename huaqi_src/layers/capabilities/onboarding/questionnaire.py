@@ -17,43 +17,23 @@ class AnsweredPair:
 ONBOARDING_QUESTIONS: List[Question] = [
     Question(
         dimension="goals",
-        text="你现在最想做成的一件事是什么？可以是工作上的，也可以是生活里的。",
-    ),
-    Question(
-        dimension="challenges",
-        text="什么事情最近让你感到卡住或者消耗？",
-    ),
-    Question(
-        dimension="learned",
-        text="最近有没有什么让你觉得「哦，原来如此」的认知？可以是读到的、聊到的、经历到的。",
-    ),
-    Question(
-        dimension="narratives",
-        text="你会怎么向一个刚认识的朋友介绍自己？",
+        text="你现在最想做成的一件事是什么？是什么在阻止你？",
     ),
     Question(
         dimension="beliefs",
-        text="你最看重什么？有没有什么原则是你不愿意妥协的？",
+        text="你觉得一个人要做成事，最关键的是什么？",
     ),
     Question(
-        dimension="models",
-        text="你觉得这个世界是怎么运转的？有没有某个框架或者比喻，是你经常用来理解事情的？",
+        dimension="narratives",
+        text="你怎么描述自己？有没有一面是你不太愿意承认但确实存在的？",
     ),
     Question(
         dimension="strategies",
-        text="你面对一个新的困难或挑战时，通常怎么处理？",
+        text="你现在用什么方式推进事情？最近学到了什么让你觉得有用？",
     ),
     Question(
         dimension="people",
-        text="你生命里现在最重要的几个人是谁？他们对你意味着什么？",
-    ),
-    Question(
-        dimension="shadows",
-        text="如果你最了解你的朋友来评价你，他会说你最大的盲点或弱点是什么？",
-    ),
-    Question(
-        dimension="meta",
-        text="你希望我在了解你的过程中，特别注意什么？有没有什么是你不想让我记录的？",
+        text="你生活里现在最重要的1-2个人是谁？你们的关系是什么状态？",
     ),
 ]
 

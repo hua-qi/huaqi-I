@@ -286,3 +286,38 @@ class TestEndToEndContextInjection:
         updated = builder.inject(state, query="最近怎么了")
 
         assert "challenges" in updated["telos_snapshot"]
+
+    def test_build_telos_snapshot_contains_full_content(self, telos_manager):
+        from datetime import datetime, timezone
+        from huaqi_src.layers.growth.telos.models import HistoryEntry
+        entry = HistoryEntry(
+            version=1,
+            change="信念改变了",
+            trigger="信号触发",
+            confidence=0.8,
+            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        telos_manager.update(
+            "beliefs",
+            "选择比努力更重要，专注在少数关键事情上。",
+            entry,
+            0.8,
+        )
+        builder = TelosContextBuilder(telos_manager=telos_manager)
+        snapshot = builder.build_telos_snapshot()
+        assert "选择比努力更重要" in snapshot
+
+    def test_build_telos_snapshot_excludes_history(self, telos_manager):
+        from datetime import datetime, timezone
+        from huaqi_src.layers.growth.telos.models import HistoryEntry
+        entry = HistoryEntry(
+            version=1,
+            change="不应该出现在快照中的历史内容",
+            trigger="触发",
+            confidence=0.5,
+            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        telos_manager.update("beliefs", "当前认知内容", entry, 0.5)
+        builder = TelosContextBuilder(telos_manager=telos_manager)
+        snapshot = builder.build_telos_snapshot()
+        assert "不应该出现在快照中的历史内容" not in snapshot

@@ -3,7 +3,9 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-from .models import Person, Relation
+from .models import Person, Relation, InteractionLog, EmotionalTimeline
+
+MAX_LOGS = 50
 
 
 class PeopleGraph:
@@ -18,7 +20,36 @@ class PeopleGraph:
     def _person_file(self, name: str) -> Path:
         return self._people_dir / f"{name}.md"
 
+    def _archive_dir(self) -> Path:
+        d = self._people_dir / "_archive"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def _archive_overflow_logs(self, person: Person, overflow: list[InteractionLog]) -> None:
+        if not overflow:
+            return
+        year = datetime.datetime.now().year
+        archive_file = self._archive_dir() / f"{person.name}_{year}.md"
+        rows = "\n".join(
+            f"| {l.date} | {l.interaction_type} | {l.summary} | {l.signal_id} |"
+            for l in overflow
+        )
+        header = "| 日期 | 类型 | 摘要 | signal_id |\n|------|------|------|-----------|\n"
+        content = f"## 互动记录归档（{year}）\n\n{header}{rows}\n"
+        if archive_file.exists():
+            existing = archive_file.read_text(encoding="utf-8")
+            archive_file.write_text(existing + "\n" + content, encoding="utf-8")
+        else:
+            archive_file.write_text(content, encoding="utf-8")
+
     def _write_markdown(self, person: Person) -> None:
+        interaction_logs = person.interaction_logs
+        overflow: list[InteractionLog] = []
+        if len(interaction_logs) > MAX_LOGS:
+            overflow = interaction_logs[:-MAX_LOGS]
+            interaction_logs = interaction_logs[-MAX_LOGS:]
+            self._archive_overflow_logs(person, overflow)
+
         lines = [
             f"# {person.name}",
             "",
@@ -32,14 +63,78 @@ class PeopleGraph:
             "## 备注",
             person.notes or "暂无",
             "",
+        ]
+
+        lines += [
+            "## 互动记录",
+            "| 日期 | 类型 | 摘要 | signal_id |",
+            "|------|------|------|-----------|\n",
+        ]
+        for log in interaction_logs:
+            lines.append(f"| {log.date} | {log.interaction_type} | {log.summary} | {log.signal_id} |")
+        lines.append("")
+
+        lines += [
+            "## 情感时序",
+            "| 日期 | 分值 | 触发原因 |",
+            "|------|------|---------|\n",
+        ]
+        for entry in person.emotional_timeline:
+            lines.append(f"| {entry.date} | {entry.score} | {entry.trigger} |")
+        lines.append("")
+
+        lines += [
             f"<!-- person_id: {person.person_id} -->",
             f"<!-- alias: {json.dumps(person.alias, ensure_ascii=False)} -->",
             f"<!-- created_at: {person.created_at} -->",
             f"<!-- updated_at: {person.updated_at} -->",
         ]
-        self._person_file(person.name).write_text(
-            "\n".join(lines), encoding="utf-8"
-        )
+        self._person_file(person.name).write_text("\n".join(lines), encoding="utf-8")
+
+    def _parse_interaction_logs(self, lines: list[str]) -> list[InteractionLog]:
+        capturing = False
+        logs = []
+        for line in lines:
+            if line == "## 互动记录":
+                capturing = True
+                continue
+            if capturing:
+                if line.startswith("## ") or line.startswith("<!-- "):
+                    break
+                if line.startswith("|") and "日期" not in line and "---" not in line and line.strip() != "|":
+                    parts = [p.strip() for p in line.strip().strip("|").split("|")]
+                    if len(parts) >= 4:
+                        logs.append(InteractionLog(
+                            date=parts[0],
+                            interaction_type=parts[1],
+                            summary=parts[2],
+                            signal_id=parts[3],
+                        ))
+        return logs
+
+    def _parse_emotional_timeline(self, lines: list[str]) -> list[EmotionalTimeline]:
+        capturing = False
+        entries = []
+        for line in lines:
+            if line == "## 情感时序":
+                capturing = True
+                continue
+            if capturing:
+                if line.startswith("## ") or line.startswith("<!-- "):
+                    break
+                if line.startswith("|") and "日期" not in line and "---" not in line and line.strip() != "|":
+                    parts = [p.strip() for p in line.strip().strip("|").split("|")]
+                    if len(parts) >= 3:
+                        try:
+                            score = float(parts[1])
+                        except ValueError:
+                            score = 0.0
+                        entries.append(EmotionalTimeline(
+                            date=parts[0],
+                            score=score,
+                            trigger=parts[2],
+                        ))
+        return entries
 
     def _read_markdown(self, name: str) -> Optional[Person]:
         f = self._person_file(name)
@@ -100,6 +195,9 @@ class PeopleGraph:
         if notes == "暂无":
             notes = ""
 
+        interaction_logs = self._parse_interaction_logs(lines)
+        emotional_timeline = self._parse_emotional_timeline(lines)
+
         return Person(
             person_id=person_id or f"{name}-unknown",
             name=name,
@@ -111,6 +209,8 @@ class PeopleGraph:
             notes=notes,
             created_at=created_at or datetime.datetime.now().isoformat(),
             updated_at=updated_at or datetime.datetime.now().isoformat(),
+            interaction_logs=interaction_logs,
+            emotional_timeline=emotional_timeline,
         )
 
     def add_person(self, person: Person) -> None:
@@ -153,3 +253,17 @@ class PeopleGraph:
             if query_lower in text:
                 results.append(person)
         return results
+
+    def get_top_n(self, n: int = 5) -> list[Person]:
+        people = self.list_people()
+
+        def score(p: Person) -> float:
+            freq_score = min(len(p.interaction_logs) / 50, 1.0)
+            if p.emotional_timeline:
+                latest_emotion = abs(p.emotional_timeline[-1].score)
+            else:
+                _impact_map = {"积极": 0.6, "消极": 0.6, "中性": 0.3}
+                latest_emotion = _impact_map.get(p.emotional_impact, 0.3)
+            return freq_score * 0.5 + latest_emotion * 0.5
+
+        return sorted(people, key=score, reverse=True)[:n]

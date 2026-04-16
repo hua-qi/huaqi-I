@@ -374,3 +374,136 @@ class TestTelosEngineFullPipeline:
         assert result["updated"] is True
         assert result["growth_event"] is not None
         assert result["growth_event"].is_growth_event is True
+
+
+@pytest.fixture
+def mock_combined_step() -> dict:
+    return {
+        "should_update": True,
+        "new_content": "当前最大挑战是目标感缺失，选择方向比埋头努力更重要。",
+        "consistency_score": 0.8,
+        "history_entry": {
+            "change": "从「缺乏专注」更新为「目标感缺失」",
+            "trigger": "日记连续 3 次提到方向感问题",
+        },
+        "is_growth_event": True,
+        "growth_title": "开始质疑努力的方向",
+        "growth_narrative": "你开始意识到方向比努力更重要了。",
+    }
+
+
+class TestCombinedStepOutput:
+    def test_valid_combined_output(self, mock_combined_step):
+        from huaqi_src.layers.growth.telos.engine import CombinedStepOutput
+        out = CombinedStepOutput(**mock_combined_step)
+        assert out.should_update is True
+        assert out.consistency_score == 0.8
+        assert out.is_growth_event is True
+
+    def test_combined_output_no_update(self):
+        from huaqi_src.layers.growth.telos.engine import CombinedStepOutput
+        out = CombinedStepOutput(
+            should_update=False,
+            new_content=None,
+            consistency_score=0.2,
+            history_entry=None,
+            is_growth_event=False,
+            growth_title=None,
+            growth_narrative=None,
+        )
+        assert out.should_update is False
+
+
+class TestStep345Combined:
+    async def test_step345_single_llm_call(self, telos_manager, mock_combined_step):
+        import json
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content=json.dumps(mock_combined_step)))
+        engine = TelosEngine(telos_manager=telos_manager, llm=mock_llm)
+
+        result = await engine.step345_combined(
+            dimension="challenges",
+            signal_summaries=["摘要1", "摘要2", "摘要3"],
+            days=30,
+            recent_signal_count=5,
+        )
+
+        assert mock_llm.ainvoke.call_count == 1
+        assert result.should_update is True
+        assert result.is_growth_event is True
+
+    async def test_step345_calculates_confidence_correctly(self, telos_manager, mock_combined_step):
+        import json
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content=json.dumps(mock_combined_step)))
+        engine = TelosEngine(telos_manager=telos_manager, llm=mock_llm)
+
+        result = await engine.step345_combined(
+            dimension="challenges",
+            signal_summaries=["摘要"],
+            days=30,
+            recent_signal_count=5,
+        )
+
+        expected_count_score = min(5 / 10, 1.0)
+        expected_confidence = expected_count_score * 0.4 + 0.8 * 0.6
+        assert abs(result.confidence - expected_confidence) < 0.001
+
+    async def test_step345_updates_manager_when_should_update(self, telos_manager, mock_combined_step):
+        import json
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content=json.dumps(mock_combined_step)))
+        engine = TelosEngine(telos_manager=telos_manager, llm=mock_llm)
+
+        await engine.step345_combined(
+            dimension="challenges",
+            signal_summaries=["摘要"],
+            days=30,
+            recent_signal_count=3,
+        )
+
+        dim = telos_manager.get("challenges")
+        assert dim.update_count == 1
+        assert "目标感缺失" in dim.content
+
+
+@pytest.fixture
+def mock_review_stale_update() -> dict:
+    return {
+        "is_stale": True,
+        "new_consistency_score": 0.4,
+        "reason": "超过30天无新信号，内容可能已过时",
+    }
+
+@pytest.fixture
+def mock_review_stale_valid() -> dict:
+    return {
+        "is_stale": False,
+        "new_consistency_score": 0.8,
+        "reason": "内容依然准确",
+    }
+
+
+class TestReviewStaleDimension:
+    def test_review_stale_returns_output(self, telos_manager, mock_review_stale_valid):
+        import json
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content=json.dumps(mock_review_stale_valid))
+        engine = TelosEngine(telos_manager=telos_manager, llm=mock_llm)
+
+        result = engine.review_stale_dimension("beliefs", days_since_last_signal=40)
+
+        assert result is not None
+        assert hasattr(result, "is_stale")
+        assert result.is_stale is False
+
+    def test_review_stale_lowers_confidence_when_stale(self, telos_manager, mock_review_stale_update):
+        import json
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content=json.dumps(mock_review_stale_update))
+        engine = TelosEngine(telos_manager=telos_manager, llm=mock_llm)
+
+        engine.review_stale_dimension("beliefs", days_since_last_signal=40)
+
+        dim = telos_manager.get("beliefs")
+        assert dim.confidence < 0.5

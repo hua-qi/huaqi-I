@@ -242,6 +242,11 @@ def absence_signal() -> RawSignal:
     )
 
 
+def test_source_type_has_work_doc():
+    from huaqi_src.layers.data.raw_signal.models import SourceType
+    assert SourceType.WORK_DOC == "work_doc"
+
+
 class TestStandardFixtures:
     def test_journal_signal_fixture(self, journal_signal):
         assert journal_signal.source_type == SourceType.JOURNAL
@@ -252,3 +257,25 @@ class TestStandardFixtures:
 
     def test_absence_signal_fixture(self, absence_signal):
         assert absence_signal.source_type == SourceType.ABSENCE
+
+
+class TestEmbeddingField:
+    def test_raw_signal_has_embedding_field(self):
+        signal = RawSignal(
+            user_id="u1",
+            source_type=SourceType.JOURNAL,
+            timestamp=datetime.now(timezone.utc),
+            content="测试内容",
+        )
+        assert hasattr(signal, "embedding")
+        assert signal.embedding is None
+
+    def test_raw_signal_accepts_embedding_list(self):
+        signal = RawSignal(
+            user_id="u1",
+            source_type=SourceType.JOURNAL,
+            timestamp=datetime.now(timezone.utc),
+            content="测试内容",
+            embedding=[0.1, 0.2, 0.3],
+        )
+        assert signal.embedding == [0.1, 0.2, 0.3]

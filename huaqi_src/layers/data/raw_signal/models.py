@@ -16,6 +16,7 @@ class SourceType(str, Enum):
     IMAGE = "image"
     CALENDAR = "calendar"
     ABSENCE = "absence"
+    WORK_DOC = "work_doc"
 
 
 class JournalMetadata(BaseModel):
@@ -70,6 +71,7 @@ class RawSignal(BaseModel):
     processed: bool = False
     distilled: bool = False
     vectorized: bool = False
+    embedding: Optional[List[float]] = None
 
     @field_validator("content")
     @classmethod

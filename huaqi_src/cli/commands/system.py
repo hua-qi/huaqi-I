@@ -228,8 +228,8 @@ def daemon_command_handler(
         from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
         import huaqi_src.cli.context as _ctx
         _store = ScheduledJobStore(_ctx.DATA_DIR)
-        register_jobs(scheduler, _store)
         scheduler.start()
+        register_jobs(scheduler, _store)
 
         if foreground:
             console.print("[green]✅ Daemon 已启动 (前台模式)[/green]")

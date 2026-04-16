@@ -1,8 +1,9 @@
+import asyncio
 import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 from huaqi_src.config.errors import DimensionNotFoundError
 from huaqi_src.layers.growth.telos.models import (
@@ -24,7 +25,6 @@ _INITIAL_CONTENT: dict[str, str] = {
     "challenges": "（待补充）",
     "strategies": "（待补充）",
     "learned": "（待补充）",
-    "people": "（待补充）",
     "shadows": "（待补充）",
 }
 
@@ -56,6 +56,8 @@ class TelosManager:
     def __init__(self, telos_dir: Path, git_commit: bool = True) -> None:
         self._dir = telos_dir
         self._git_commit = git_commit
+        self._meta_lock: asyncio.Lock = asyncio.Lock()
+        self.on_work_style_updated: Optional[Callable[[], None]] = None
 
     def _path(self, name: str) -> Path:
         return self._dir / f"{name}.md"
@@ -140,6 +142,8 @@ class TelosManager:
         self._path(name).write_text(dim.to_markdown(), encoding="utf-8")
         self._rebuild_index()
         self._git_auto_commit(f"telos: update {name} (v{dim.update_count})")
+        if name == "work_style" and self.on_work_style_updated is not None:
+            self.on_work_style_updated()
 
     def create_custom(
         self,
@@ -188,6 +192,22 @@ class TelosManager:
                 date=datetime.now(timezone.utc),
                 reason="用户归档维度",
             ))
+
+    def get_dimension_snippet(self, name: str) -> str:
+        p = self._path(name)
+        if not p.exists():
+            return ""
+        text = p.read_text(encoding="utf-8")
+        separator_index = text.find("\n---\n\n## 更新历史")
+        if separator_index != -1:
+            return text[:separator_index].strip()
+        return text.strip()
+
+    def get_all_dimension_snippets(self) -> dict[str, str]:
+        result = {}
+        for dim in self.list_active():
+            result[dim.name] = self.get_dimension_snippet(dim.name)
+        return result
 
     def _rebuild_index(self) -> None:
         active = self.list_active()
