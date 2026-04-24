@@ -54,3 +54,4 @@ htmlcov/
 # User data (optional - if you don't want to commit user data)
 # users/
 # users_data/
+checkpoints.db
