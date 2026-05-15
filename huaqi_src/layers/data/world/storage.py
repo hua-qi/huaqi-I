@@ -14,9 +14,9 @@ class WorldNewsStorage:
             self.world_dir = get_world_dir()
         self.world_dir.mkdir(parents=True, exist_ok=True)
 
-    def save(self, docs: list[HuaqiDocument], date: Optional[datetime.date] = None):
+    def save(self, docs: list[HuaqiDocument], date: Optional[datetime.date] = None) -> Optional[Path]:
         if not docs:
-            return
+            return None
         if date is None:
             date = datetime.date.today()
         file_path = self.world_dir / f"{date.isoformat()}.md"
@@ -26,6 +26,7 @@ class WorldNewsStorage:
             lines.append(f"{doc.content}\n")
             lines.append("---\n")
         file_path.write_text("\n".join(lines), encoding="utf-8")
+        return file_path
 
     def search(self, query: str, days: int = 7) -> list[str]:
         query_lower = query.lower()
