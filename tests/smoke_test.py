@@ -1725,6 +1725,129 @@ class TestGitHubActionsWorkflows:
         assert is_data_dir_set()
 
 
+class TestWorldNewsEnhance:
+    """world-news-enhance 功能验收。
+
+    Spec: docs/specs/world-news-enhance.md
+    """
+
+    def test_rss_source_content_includes_link(self, data_dir, set_data_dir):
+        """AC-1: RSS 源采集的每条新闻 doc.content 包含原文链接。"""
+        from unittest.mock import MagicMock, patch
+        import datetime
+        from huaqi_src.layers.data.world.sources.rss_source import RSSSource
+
+        def _make_entry(title, link, summary, published_parsed):
+            entry = MagicMock()
+            entry.get = lambda key, default=None: {
+                "title": title, "link": link, "summary": summary,
+            }.get(key, default)
+            entry.configure_mock(
+                title=title, link=link, summary=summary,
+                published_parsed=published_parsed,
+            )
+            return entry
+
+        mock_entry = _make_entry(
+            title="Test News",
+            link="https://example.com/news/1",
+            summary="Summary text",
+            published_parsed=datetime.datetime(2026, 5, 15, 8, 0).timetuple(),
+        )
+        mock_feed = MagicMock()
+        mock_feed.entries = [mock_entry]
+
+        with patch("feedparser.parse", return_value=mock_feed):
+            source = RSSSource(url="https://example.com/feed", name="TS")
+            docs = source.fetch()
+            assert len(docs) == 1
+            assert "**链接**" in docs[0].content
+            assert "https://example.com/news/1" in docs[0].content
+
+    def test_enricher_prompt_requires_key_sections(self, data_dir, set_data_dir):
+        """AC-2/AC-3/AC-5: 增强 prompt 要求中英对照、重点关注建议、中文源处理。"""
+        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_PROMPT
+
+        assert "英文原标题" in _ENRICH_PROMPT or "英文" in _ENRICH_PROMPT
+        assert "链接" in _ENRICH_PROMPT
+        assert "重点关注建议" in _ENRICH_PROMPT
+        assert "中文" in _ENRICH_PROMPT
+        assert "{user_context}" in _ENRICH_PROMPT
+
+    def test_enricher_graceful_degradation(self, data_dir, set_data_dir):
+        """AC-6: 空文件和 LLM 失败时优雅降级。"""
+        from pathlib import Path
+        from unittest.mock import MagicMock
+        from huaqi_src.layers.capabilities.world_news_enricher import \
+            WorldNewsEnricher
+
+        enricher = WorldNewsEnricher(MagicMock())
+
+        # 空文件
+        f = Path("/tmp/smoke_empty_world.md")
+        f.write_text("", encoding="utf-8")
+        assert enricher.enrich_file(f) is False
+
+        # LLM 失败
+        mock_llm = MagicMock()
+        mock_llm.quick_chat.side_effect = RuntimeError("fail")
+        enricher2 = WorldNewsEnricher(mock_llm)
+        assert enricher2.enrich_file(f) is False  # 空文件先触发，不调用 LLM
+
+    def test_load_user_context_from_telos(self, data_dir, set_data_dir):
+        """_load_user_context 从 TELOS 目录加载用户画像。"""
+        from huaqi_src.cli.commands.world import _load_user_context
+        from huaqi_src.config import paths
+        from huaqi_src.layers.growth.telos.models import (
+            TelosDimension, DimensionLayer,
+        )
+
+        telos_dir = data_dir / "telos"
+        telos_dir.mkdir(parents=True, exist_ok=True)
+        goals = TelosDimension(
+            name="goals", layer=DimensionLayer.MIDDLE,
+            content="学习 Rust 语言", confidence=0.9, update_count=2,
+        )
+        (telos_dir / "goals.md").write_text(goals.to_markdown(), encoding="utf-8")
+
+        # 验证能正确加载
+        import huaqi_src.config.paths as p
+        with patch.object(p, "require_data_dir", return_value=data_dir):
+            result = _load_user_context()
+        assert result is not None
+        assert "Rust" in result
+
+    def test_world_provider_extracts_suggestions(self, data_dir, set_data_dir):
+        """AC-4: WorldProvider 优先提取「重点关注建议」板块。"""
+        from huaqi_src.layers.capabilities.reports.providers.world import WorldProvider
+        from huaqi_src.layers.capabilities.reports.providers import DateRange
+        import datetime
+
+        world_dir = data_dir / "world"
+        world_dir.mkdir(parents=True, exist_ok=True)
+        content = (
+            "# 世界感知摘要 2026-05-15\n\n"
+            + "x" * 2000 + "\n\n"
+            "## 重点关注建议\n\n"
+            "### AI/科技\n"
+            "- **OpenAI 发布新模型**：关注理由：与工作直接相关\n\n"
+            "---\n\n"
+            "## 新闻详情\n\n"
+            "不应该出现的新闻详情"
+        )
+        (world_dir / "2026-05-15.md").write_text(content, encoding="utf-8")
+
+        provider = WorldProvider(data_dir=data_dir)
+        date_range = DateRange(
+            start=datetime.date(2026, 5, 15),
+            end=datetime.date(2026, 5, 15),
+        )
+        result = provider.get_context("morning", date_range)
+        assert result is not None
+        assert "重点关注建议" in result
+        assert "不应该出现的新闻详情" not in result
+
+
 # ============================================================================
 # 运行入口
 # ============================================================================

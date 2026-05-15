@@ -19,7 +19,8 @@ class RSSSource(BaseWorldSource):
         for entry in feed.entries[:20]:
             content = entry.get("summary", entry.get("title", ""))
             title = entry.get("title", "")
-            full_content = f"# {title}\n\n{content}"
+            url = entry.get("link", "")
+            full_content = f"# {title}\n\n{content}\n\n**链接**：{url}"
             doc_id = hashlib.md5(entry.get("link", title).encode()).hexdigest()[:12]
             published = entry.get("published_parsed")
             if published:

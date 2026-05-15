@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -23,8 +24,27 @@ class WorldProvider(DataProvider):
             world_file = self._lazy_fetch(today)
         if world_file is None or not world_file.exists():
             return None
-        content = world_file.read_text(encoding="utf-8")[:1000]
-        return f"## 今日世界热点\n{content}"
+        content = world_file.read_text(encoding="utf-8")
+        extracted = self._extract_for_report(content)
+        return f"## 今日世界热点\n{extracted}"
+
+    def _extract_for_report(self, content: str, max_chars: int = 1500) -> str:
+        """从世界新闻文件中智能提取报告用内容。
+
+        优先完整保留「重点关注建议」板块，剩余空间用于新闻摘要。
+        无建议板块时回退到简单截断。
+        """
+        suggest_match = re.search(
+            r'## 重点关注建议\n(.*?)(?=\n## 新闻详情|\n---\n## )',
+            content, re.DOTALL
+        )
+        if suggest_match:
+            suggestions = suggest_match.group(0).strip()
+            if len(suggestions) <= max_chars:
+                return suggestions
+            return suggestions[:max_chars].rsplit("\n", 1)[0]
+
+        return content[:max_chars]
 
     def _lazy_fetch(self, date_str: str) -> "Optional[Path]":
         try:

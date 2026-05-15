@@ -34,6 +34,36 @@ def _build_enricher():
         return None
 
 
+def _load_user_context() -> str | None:
+    """从 TELOS 加载用户画像摘要，用于个性化新闻建议。"""
+    try:
+        from huaqi_src.config.paths import require_data_dir
+        from huaqi_src.layers.growth.telos.manager import TelosManager
+
+        data_dir = require_data_dir()
+        telos_dir = data_dir / "telos"
+        if not telos_dir.exists():
+            return None
+        manager = TelosManager(telos_dir=telos_dir, git_commit=False)
+        active = manager.list_active()
+        if not active:
+            return None
+        # 提取全部维度
+        labels = {
+            "beliefs": "核心信念", "models": "心理模型", "narratives": "自我叙事",
+            "goals": "当前目标", "challenges": "当前挑战", "strategies": "应对策略",
+            "learned": "最近所学", "shadows": "盲点/短板",
+        }
+        parts = []
+        for dim in active:
+            if dim.content.strip():
+                label = labels.get(dim.name, dim.name)
+                parts.append(f"{label}：{dim.content.strip()}")
+        return "\n".join(parts) if parts else None
+    except Exception:
+        return None
+
+
 @world_app.command("fetch")
 def fetch_cmd(
     date: Optional[str] = typer.Option(None, "--date", help="采集日期 YYYY-MM-DD，默认今天"),
@@ -57,7 +87,8 @@ def fetch_cmd(
         enricher = _build_enricher()
         if enricher:
             typer.echo("[World] 正在翻译和扩展新闻内容...")
-            if enricher.enrich_file(saved_path):
+            user_context = _load_user_context()
+            if enricher.enrich_file(saved_path, user_context=user_context):
                 typer.echo("[World] 内容增强完成")
             else:
                 typer.echo("[World] 内容增强失败，保留原始内容")

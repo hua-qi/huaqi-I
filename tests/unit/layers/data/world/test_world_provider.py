@@ -62,3 +62,41 @@ def test_world_provider_returns_none_when_lazy_fetch_raises(tmp_path):
         result = provider.get_context("morning", _make_date_range("2026-05-04"))
 
         assert result is None
+
+
+def test_prioritizes_suggestions_section(tmp_path):
+    """AC-4: 文件含「重点关注建议」时，提取该部分且不含新闻详情。"""
+    content = (
+        "# 世界感知摘要 2026-05-15\n\n"
+        + ("x" * 2000) + "\n\n"
+        "## 重点关注建议\n\n"
+        "### AI/科技\n"
+        "- **OpenAI 发布新模型**：关注理由：与你目前的工作直接相关\n\n"
+        "---\n\n"
+        "## 新闻详情\n\n"
+        "不应该出现这些新闻详情内容"
+    )
+    world_dir = tmp_path / "world"
+    world_dir.mkdir()
+    (world_dir / "2026-05-15.md").write_text(content, encoding="utf-8")
+
+    provider = WorldProvider(data_dir=tmp_path)
+    result = provider.get_context("morning", _make_date_range("2026-05-15"))
+    assert result is not None
+    assert "重点关注建议" in result
+    assert "与你目前的工作直接相关" in result
+    # 关键：不应该包含新闻详情内容
+    assert "不应该出现这些新闻详情内容" not in result
+
+
+def test_falls_back_to_truncation_when_no_suggestions(tmp_path):
+    """无「重点关注建议」板块时，回退到前 N 字符截断。"""
+    content = "# 世界感知摘要\n\n## TestSource\n\nSome news content here."
+    world_dir = tmp_path / "world"
+    world_dir.mkdir()
+    (world_dir / "2026-05-15.md").write_text(content, encoding="utf-8")
+
+    provider = WorldProvider(data_dir=tmp_path)
+    result = provider.get_context("morning", _make_date_range("2026-05-15"))
+    assert result is not None
+    assert "Some news content here" in result
