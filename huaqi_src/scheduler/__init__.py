@@ -1,23 +1,17 @@
-"""APScheduler 定时任务模块"""
+"""定时任务配置与执行模块（无守护进程）
 
-from .manager import SchedulerManager, get_scheduler_manager
-from .handlers import (
-    TaskHandlers,
-    TASK_HANDLERS,
-    get_task_handler,
-    default_scheduler_config,
-)
-from .jobs import register_jobs
+定时任务统一走 GitHub Actions，本模块仅保留：
+- ScheduledJob: 任务配置数据模型
+- ScheduledJobStore: YAML 持久化的任务配置管理
+- _run_scheduled_job: Headless 单任务执行器（供 CLI scheduler run 命令调用）
+"""
+
+from .scheduled_job_store import ScheduledJob, ScheduledJobStore
+from .job_runner import _run_scheduled_job, get_job_output_filename
 
 __all__ = [
-    # Manager
-    "SchedulerManager",
-    "get_scheduler_manager",
-    # Handlers
-    "TaskHandlers",
-    "TASK_HANDLERS",
-    "get_task_handler",
-    "default_scheduler_config",
-    # Jobs
-    "register_jobs",
+    "ScheduledJob",
+    "ScheduledJobStore",
+    "_run_scheduled_job",
+    "get_job_output_filename",
 ]

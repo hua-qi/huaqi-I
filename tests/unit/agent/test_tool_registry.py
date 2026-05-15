@@ -25,12 +25,6 @@ def test_tool_registry_contains_all_existing_tools():
         "mark_lesson_complete_tool",
         "write_file_tool",
         "read_file_tool",
-        "list_scheduled_jobs_tool",
-        "add_scheduled_job_tool",
-        "remove_scheduled_job_tool",
-        "update_scheduled_job_tool",
-        "enable_scheduled_job_tool",
-        "disable_scheduled_job_tool",
     ]
     for name in expected:
         assert name in names, f"{name} not in registry"

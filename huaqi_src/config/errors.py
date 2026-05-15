@@ -51,10 +51,6 @@ class UpdateGenerationError(DistillationError):
     pass
 
 
-class SchedulerError(HuaqiError):
-    pass
-
-
 class InterfaceError(HuaqiError):
     pass
 

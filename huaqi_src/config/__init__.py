@@ -24,7 +24,6 @@ from .paths import (
     get_wechat_db_dir,
     get_people_dir,
     get_world_dir,
-    get_scheduler_db_path,
     ensure_dirs,
 )
 from .manager import (
@@ -65,7 +64,6 @@ __all__ = [
     "get_wechat_db_dir",
     "get_people_dir",
     "get_world_dir",
-    "get_scheduler_db_path",
     "ensure_dirs",
     # 配置管理
     "AppConfig",

@@ -220,11 +220,6 @@ def get_telos_dir() -> Path:
     return require_data_dir() / "telos"
 
 
-def get_scheduler_db_path() -> Path:
-    """获取调度器数据库路径"""
-    return require_data_dir() / "scheduler.db"
-
-
 def ensure_dirs():
     """确保所有目录存在"""
     dirs = [

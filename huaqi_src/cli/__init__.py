@@ -12,7 +12,7 @@ from huaqi_src.cli.commands.config import config_app
 from huaqi_src.cli.commands.profile import profile_app
 from huaqi_src.cli.commands.pipeline import pipeline_app
 from huaqi_src.cli.commands.personality import personality_app
-from huaqi_src.cli.commands.system import system_app, daemon_command_handler
+from huaqi_src.cli.commands.system import system_app
 from huaqi_src.cli.inbox import app as inbox_app
 from huaqi_src.cli.commands.people import people_app
 from huaqi_src.cli.commands.collector import app as collector_app
@@ -85,15 +85,6 @@ def show_status():
 
     ensure_initialized()
     _show_detailed_status()
-
-
-@app.command("daemon")
-def daemon_command(
-    action: str = typer.Argument(..., help="操作: start/stop/status/list"),
-    foreground: bool = typer.Option(False, "--foreground", "-f", help="前台运行模式"),
-):
-    """管理后台定时任务服务"""
-    daemon_command_handler(action=action, foreground=foreground)
 
 
 @app.command("resume")

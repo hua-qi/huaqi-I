@@ -1,11 +1,9 @@
-"""system 和 daemon 子命令"""
+"""system 子命令"""
 
-import time
 from datetime import datetime
 from pathlib import Path
 
 import typer
-from rich.table import Table
 
 from huaqi_src.cli.context import console, ensure_initialized
 
@@ -24,7 +22,7 @@ def webhook_server(
     console.print(f"\n[bold green]🚀 启动 Webhook 接收服务器 ({host}:{port})[/bold green]")
     console.print('[dim]测试命令: curl -X POST http://127.0.0.1:8080/api/webhook/wechat -d \'{"actor": "张三", "content": "你好呀"}\'[/dim]')
     console.print("[dim]使用 Ctrl+C 停止服务器...[/dim]\n")
-    
+
     try:
         run_server(host=host, port=port)
     except KeyboardInterrupt:
@@ -149,151 +147,3 @@ def system_backup():
         console.print(f"\n[green]✅ 备份已创建: {backup_dir}[/green]\n")
     else:
         console.print("\n[yellow]无数据可备份[/yellow]\n")
-
-
-_PLIST_LABEL = "com.huaqi.daemon"
-_PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{_PLIST_LABEL}.plist"
-
-
-def _get_plist_content(huaqi_bin: str, log_dir: Path) -> str:
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>{_PLIST_LABEL}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>{huaqi_bin}</string>
-        <string>daemon</string>
-        <string>start</string>
-        <string>--foreground</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>{log_dir}/daemon.log</string>
-    <key>StandardErrorPath</key>
-    <string>{log_dir}/daemon.err</string>
-</dict>
-</plist>
-"""
-
-
-def daemon_command_handler(
-    action: str = typer.Argument(..., help="操作: start/stop/status/list/install/uninstall"),
-    foreground: bool = typer.Option(False, "--foreground", "-f", help="前台运行模式"),
-):
-    """管理后台定时任务服务"""
-    ensure_initialized()
-
-    if action == "install":
-        import shutil
-        import subprocess
-        huaqi_bin = shutil.which("huaqi") or "/usr/local/bin/huaqi"
-        import huaqi_src.cli.context as _ctx
-        log_dir = _ctx.DATA_DIR / "logs"
-        _PLIST_PATH.write_text(_get_plist_content(huaqi_bin, log_dir), encoding="utf-8")
-        result = subprocess.run(["launchctl", "load", "-w", str(_PLIST_PATH)], capture_output=True, text=True)
-        if result.returncode == 0:
-            console.print(f"[green]✅ Daemon 已安装并启动 (开机自启)[/green]")
-            console.print(f"[dim]plist: {_PLIST_PATH}[/dim]")
-            console.print(f"[dim]日志: {log_dir}/daemon.log[/dim]\n")
-        else:
-            console.print(f"[red]❌ launchctl load 失败: {result.stderr}[/red]")
-        return
-
-    if action == "uninstall":
-        import subprocess
-        if _PLIST_PATH.exists():
-            subprocess.run(["launchctl", "unload", "-w", str(_PLIST_PATH)], capture_output=True)
-            _PLIST_PATH.unlink()
-            console.print("[green]✅ Daemon 已卸载并移除开机自启[/green]\n")
-        else:
-            console.print("[yellow]⚠️ 未找到已安装的 plist[/yellow]\n")
-        return
-
-    from huaqi_src.scheduler import get_scheduler_manager
-    scheduler = get_scheduler_manager()
-
-    if action == "start":
-        if scheduler.is_running():
-            console.print("[yellow]⚠️ Daemon 已在运行中[/yellow]")
-            return
-
-        from huaqi_src.scheduler.jobs import register_jobs
-        from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
-        import huaqi_src.cli.context as _ctx
-        _store = ScheduledJobStore(_ctx.DATA_DIR)
-        scheduler.start()
-        register_jobs(scheduler, _store)
-
-        if foreground:
-            console.print("[green]✅ Daemon 已启动 (前台模式)[/green]")
-            console.print("[dim]按 Ctrl+C 停止[/dim]\n")
-            _yaml_path = _store._path
-            _last_mtime: float = _yaml_path.stat().st_mtime if _yaml_path.exists() else 0.0
-            try:
-                while True:
-                    time.sleep(5)
-                    if _yaml_path.exists():
-                        _mtime = _yaml_path.stat().st_mtime
-                        if _mtime != _last_mtime:
-                            _last_mtime = _mtime
-                            try:
-                                register_jobs(scheduler, _store)
-                            except Exception as _e:
-                                console.print(f"[yellow]⚠️ 重载任务失败: {_e}[/yellow]")
-            except KeyboardInterrupt:
-                scheduler.shutdown()
-                console.print("\n[dim]Daemon 已停止[/dim]")
-        else:
-            console.print("[green]✅ Daemon 已启动 (后台模式)[/green]")
-            console.print("[dim]使用 'huaqi daemon stop' 停止[/dim]\n")
-
-    elif action == "stop":
-        if not scheduler.is_running():
-            console.print("[yellow]⚠️ Daemon 未在运行[/yellow]")
-            return
-        scheduler.shutdown()
-        console.print("[green]✅ Daemon 已停止[/green]\n")
-
-    elif action == "status":
-        if scheduler.is_running():
-            console.print("[green]● Daemon 运行中[/green]")
-            jobs = scheduler.list_jobs()
-            if jobs:
-                console.print(f"\n[bold]已注册任务 ({len(jobs)}):[/bold]")
-                for job in jobs:
-                    next_run = job.get("next_run_time", "N/A")
-                    console.print(f"  • {job['id']}: {job['trigger']}")
-                    console.print(f"    下次执行: {next_run}")
-            else:
-                console.print("\n[dim]暂无任务[/dim]")
-        else:
-            console.print("[dim]○ Daemon 未运行[/dim]")
-        console.print()
-
-    elif action == "list":
-        jobs = scheduler.list_jobs()
-        if jobs:
-            table = Table(title="定时任务列表")
-            table.add_column("ID", style="cyan")
-            table.add_column("触发器", style="green")
-            table.add_column("下次执行", style="yellow")
-            for job in jobs:
-                next_run = job.get("next_run_time", "N/A")
-                if next_run:
-                    next_run = str(next_run)[:19]
-                table.add_row(job["id"], job["trigger"], str(next_run))
-            console.print(table)
-        else:
-            console.print("[dim]暂无任务[/dim]")
-        console.print()
-
-    else:
-        console.print(f"[red]❌ 未知操作: {action}[/red]")
-        console.print("可用操作: start, stop, status, list\n")

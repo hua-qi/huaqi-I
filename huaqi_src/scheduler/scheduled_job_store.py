@@ -1,11 +1,15 @@
 import contextlib
 import fcntl
+import re
 from pathlib import Path
 from typing import List, Optional
 
 import yaml
-from apscheduler.triggers.cron import CronTrigger
 from pydantic import BaseModel, field_validator
+
+_CRON_RE = re.compile(
+    r'^(?:\S+\s+){4}\S+$'
+)
 
 
 class ScheduledJob(BaseModel):
@@ -19,10 +23,8 @@ class ScheduledJob(BaseModel):
     @field_validator("cron")
     @classmethod
     def validate_cron(cls, v: str) -> str:
-        try:
-            CronTrigger.from_crontab(v)
-        except Exception as e:
-            raise ValueError(f"无效的 cron 表达式 '{v}': {e}") from e
+        if not _CRON_RE.match(v.strip()):
+            raise ValueError(f"无效的 cron 表达式 '{v}'：需要 5 段空格分隔的字段")
         return v
 
 

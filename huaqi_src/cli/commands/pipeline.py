@@ -23,7 +23,7 @@ def pipeline_show():
     ensure_initialized()
 
     from huaqi_src.layers.capabilities.pipeline.platforms import XiaoHongShuPublisher
-    from huaqi_src.scheduler.pipeline_job import PipelineJobManager
+    from huaqi_src.layers.capabilities.pipeline.job_manager import PipelineJobManager
 
     console.print("\n[bold cyan]🚀 流水线状态[/bold cyan]\n")
 
@@ -121,7 +121,7 @@ def pipeline_review(
     """审核待发布内容"""
     ensure_initialized()
 
-    from huaqi_src.scheduler.pipeline_job import PipelineJobManager
+    from huaqi_src.layers.capabilities.pipeline.job_manager import PipelineJobManager
 
     manager = PipelineJobManager()
 

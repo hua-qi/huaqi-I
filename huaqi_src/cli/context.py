@@ -18,7 +18,6 @@ from huaqi_src.layers.data.diary import DiaryStore
 from huaqi_src.layers.data.git.auto_commit import GitAutoCommit
 from huaqi_src.layers.capabilities.llm.manager import LLMConfig, Message, LLMManager
 from huaqi_src.layers.data.memory.storage.markdown_store import MarkdownMemoryStore
-from huaqi_src.scheduler.startup_recovery import StartupJobRecovery
 
 console = Console()
 
@@ -58,35 +57,6 @@ def ensure_initialized():
     if _memory_store is None:
         _memory_store = MarkdownMemoryStore(MEMORY_DIR / "conversations")
 
-    _run_startup_recovery()
-
-
-def _run_startup_recovery():
-    if os.getenv("HUAQI_SKIP_RECOVERY"):
-        return
-    try:
-        from huaqi_src.config.paths import get_scheduler_db_path
-        from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
-        db_path = get_scheduler_db_path()
-        store = ScheduledJobStore(DATA_DIR)
-        job_configs = {
-            job.id: {"cron": job.cron, "display_name": job.display_name}
-            for job in store.load_jobs()
-            if job.enabled
-        }
-        recovery = StartupJobRecovery(
-            data_dir=DATA_DIR,
-            db_path=db_path,
-            job_configs=job_configs,
-        )
-        recovery.run(notify_callback=_on_recovery_notify)
-    except Exception as e:
-        print(f"[Recovery] 启动检查失败: {e}")
-
-
-def _on_recovery_notify(missed_jobs):
-    names = "、".join(m.display_name for m in missed_jobs)
-    console.print(f"[yellow]⚠️  发现 {len(missed_jobs)} 个任务未执行（{names}），正在后台补跑...[/yellow]")
 
 
 def build_llm_manager(temperature: float = 0.7, max_tokens: int = 1500, timeout: int = 60) -> Optional[LLMManager]:

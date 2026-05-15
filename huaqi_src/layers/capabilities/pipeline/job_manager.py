@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from enum import Enum
 
-from .manager import get_scheduler_manager
 from huaqi_src.layers.capabilities.pipeline import create_default_pipeline, ContentItem
 
 
@@ -64,7 +63,7 @@ class PipelineJobManager:
     
     def __init__(self, pending_dir: Path = None):
         if pending_dir is None:
-            from ..config.paths import get_pending_reviews_dir
+            from huaqi_src.config.paths import get_pending_reviews_dir
             pending_dir = get_pending_reviews_dir()
         self.pending_dir = pending_dir
         self.pending_dir.mkdir(parents=True, exist_ok=True)
