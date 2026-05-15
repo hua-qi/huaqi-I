@@ -47,6 +47,7 @@ dependencies = [
     # 数据获取
     "aiohttp>=3.9.0",
     "feedparser>=6.0.0",
+    "duckduckgo-search>=7.0.0",
     # 配置热重载
     "watchdog>=4.0.0",
     # 结构化日志

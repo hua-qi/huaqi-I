@@ -62,6 +62,8 @@ def ensure_initialized():
 
 
 def _run_startup_recovery():
+    if os.getenv("HUAQI_SKIP_RECOVERY"):
+        return
     try:
         from huaqi_src.config.paths import get_scheduler_db_path
         from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
