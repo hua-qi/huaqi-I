@@ -74,6 +74,7 @@ def _build_default_jobs() -> List[dict]:
             "cron": "0 21 * * *",
             "enabled": True,
             "prompt": "请推送今日学习内容，从进行中的课程中选取一个知识点出题复习。",
+            "output_dir": "learning",
         },
         {
             "id": "world_fetch",
