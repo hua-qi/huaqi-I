@@ -1,0 +1,73 @@
+name: 世界新闻采集
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # UTC 23:00 = 北京时间 7:00 (次日)
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/checkout@v4
+        with:
+          repository: YOUR_USERNAME/huaqi-growing
+          path: huaqi-src
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install huaqi
+        run: pip install -e huaqi-src/
+
+      - name: Run world fetch
+        id: report
+        env:
+          HUAQI_DATA_DIR: ${{ github.workspace }}
+          HUAQI_SKIP_RECOVERY: '1'
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          huaqi world fetch
+
+      - name: Commit and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin main && git checkout main && git reset --hard origin/main
+          git config user.name "Huaqi Bot"
+          git config user.email "bot@huaqi.local"
+          git add world/ 2>/dev/null || true
+          git add .
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: world fetch $(date +%F)"
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git push
+          fi
+
+      - name: Notify success
+        if: success()
+        env:
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+        run: |
+          CONTENT=$(cat world/$(date +%F).md 2>/dev/null || echo "无输出内容")
+          bash .github/workflows/notify.sh \
+            "✅ 世界新闻已采集" \
+            "${CONTENT}"
+
+      - name: Notify failure
+        if: failure()
+        env:
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+        run: |
+          bash .github/workflows/notify.sh \
+            "❌ 世界新闻采集失败" \
+            "请查看运行日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
