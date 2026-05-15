@@ -7,11 +7,9 @@ from huaqi_src.layers.data.world.storage import WorldNewsStorage
 from huaqi_src.layers.data.world.sources.rss_source import RSSSource
 
 DEFAULT_RSS_FEEDS = [
-    # 国内科技/商业
     ("https://36kr.com/feed", "36氪"),
     ("https://www.huxiu.com/rss/0.xml", "虎嗅"),
     ("https://sspai.com/feed", "少数派"),
-    # 国际
     ("https://feeds.bbci.co.uk/news/technology/rss.xml", "BBC科技"),
     ("https://rss.cnn.com/rss/money_news_international.rss", "CNN财经"),
     ("https://feeds.reuters.com/reuters/worldNews", "路透社国际"),

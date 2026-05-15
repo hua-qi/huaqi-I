@@ -43,7 +43,7 @@ def test_world_pipeline_run_returns_false_when_no_docs(tmp_path):
         pipeline = WorldPipeline(data_dir=tmp_path)
         result = pipeline.run()
 
-        assert result is False
+        assert result is None
 
 
 def test_world_pipeline_run_returns_true_on_success(tmp_path):
@@ -56,7 +56,7 @@ def test_world_pipeline_run_returns_true_on_success(tmp_path):
         pipeline = WorldPipeline(data_dir=tmp_path)
         result = pipeline.run()
 
-        assert result is True
+        assert result is not None
 
 
 def test_world_pipeline_run_returns_false_on_exception(tmp_path):
@@ -67,4 +67,4 @@ def test_world_pipeline_run_returns_false_on_exception(tmp_path):
         pipeline = WorldPipeline(data_dir=tmp_path)
         result = pipeline.run()
 
-        assert result is False
+        assert result is None

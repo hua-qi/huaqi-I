@@ -55,17 +55,14 @@ class WorldNewsEnricher:
 
 def _extract_markdown(text: str) -> str:
     """从 LLM 回复中提取 Markdown 内容（去掉可能的代码块包裹和前言）。"""
-    # 尝试提取 ```markdown 代码块
     md_match = re.search(r"```(?:markdown|md)?\s*\n(.*?)\n```", text, re.DOTALL)
     if md_match:
         return md_match.group(1).strip()
 
-    # 尝试找到 # 标题开头
     heading_idx = text.find("\n# ")
     if heading_idx == -1:
         heading_idx = text.find("# ")
     if heading_idx > 0:
         return text[heading_idx:].strip()
 
-    # 去掉可能的前导/尾随空白
     return text.strip()
