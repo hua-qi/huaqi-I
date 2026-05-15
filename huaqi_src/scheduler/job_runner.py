@@ -8,6 +8,7 @@ _JOB_FILENAME_MAP = {
     "daily_report": lambda dt: f"{dt.strftime('%Y-%m-%d')}-evening.md",
     "weekly_report": lambda dt: f"{dt.strftime('%Y-W%W')}.md",
     "quarterly_report": lambda dt: f"{dt.strftime('%Y')}-Q{(dt.month - 1) // 3 + 1}.md",
+    "learning_daily_push": lambda dt: f"{dt.strftime('%Y-%m-%d')}-learning.md",
 }
 
 
