@@ -3,7 +3,7 @@
 import sys
 sys.path.insert(0, '.')
 
-from huaqi_src.layers.capabilities.llm.manager import LLMManager, LLMConfig, Message
+from huaqi_src.layers.capabilities.llm.manager import LLMManager, LLMConfig, Message, OpenAIProvider
 
 print("=== 测试 LLM 连接 ===\n")
 
@@ -14,14 +14,15 @@ config_path = "/Users/lianzimeng/workspace/huaqi/memory/config.yaml"
 with open(config_path) as f:
     data = yaml.safe_load(f)
 
-provider_data = data['llm_providers']['openai']
-print(f"提供商: openai")
+provider_name = list(data['llm_providers'].keys())[0]
+provider_data = data['llm_providers'][provider_name]
+print(f"提供商: {provider_name}")
 print(f"模型: {provider_data['model']}")
 print(f"地址: {provider_data['api_base']}")
 print(f"API Key: {provider_data['api_key'][:10]}...")
 
 config = LLMConfig(
-    provider='openai',
+    provider=provider_name,
     model=provider_data['model'],
     api_key=provider_data['api_key'],
     api_base=provider_data['api_base'],
@@ -30,7 +31,8 @@ config = LLMConfig(
 )
 
 manager.add_config(config)
-manager.set_active('openai')
+manager.register_provider(provider_name, OpenAIProvider)
+manager.set_active(provider_name)
 
 print("\n=== 发送测试消息 ===")
 messages = [

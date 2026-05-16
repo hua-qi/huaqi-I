@@ -65,7 +65,8 @@ def test_step1_real_llm_parses_journal(telos_dir, real_llm):
     assert result.signal_strength in [SignalStrength.STRONG, SignalStrength.MEDIUM]
 
 
-def test_step345_combined_real_llm(telos_dir, real_llm):
+@pytest.mark.asyncio
+async def test_step345_combined_real_llm(telos_dir, real_llm):
     from huaqi_src.layers.growth.telos.manager import TelosManager
     from huaqi_src.layers.growth.telos.engine import TelosEngine, CombinedStepOutput
 
@@ -73,7 +74,7 @@ def test_step345_combined_real_llm(telos_dir, real_llm):
     mgr.init()
     engine = TelosEngine(telos_manager=mgr, llm=real_llm)
 
-    result = engine.step345_combined(
+    result = await engine.step345_combined(
         dimension="challenges",
         signal_summaries=[
             "用户对方向感感到迷茫，质疑努力的意义",
@@ -90,7 +91,8 @@ def test_step345_combined_real_llm(telos_dir, real_llm):
     assert 0.0 <= result.consistency_score <= 1.0
 
 
-def test_telos_snapshot_in_agent_context_real_llm(telos_dir, real_llm):
+@pytest.mark.asyncio
+async def test_telos_snapshot_in_agent_context_real_llm(telos_dir, real_llm):
     from huaqi_src.layers.growth.telos.manager import TelosManager
     from huaqi_src.layers.growth.telos.engine import TelosEngine
     from huaqi_src.layers.growth.telos.context import TelosContextBuilder
@@ -99,7 +101,7 @@ def test_telos_snapshot_in_agent_context_real_llm(telos_dir, real_llm):
     mgr.init()
     engine = TelosEngine(telos_manager=mgr, llm=real_llm)
 
-    engine.step345_combined(
+    await engine.step345_combined(
         dimension="beliefs",
         signal_summaries=["选择比努力重要", "方向错了努力没用"],
         days=7,

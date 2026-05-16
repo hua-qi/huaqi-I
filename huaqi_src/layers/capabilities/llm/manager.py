@@ -108,6 +108,7 @@ class BaseLLMProvider(ABC):
     
     def __init__(self, config: LLMConfig):
         self.config = config
+        self.name = config.provider
         self._validate_config()
     
     @abstractmethod
