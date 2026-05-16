@@ -20,6 +20,7 @@ from huaqi_src.cli.commands.study import study_app
 from huaqi_src.cli.commands.report import report_app
 from huaqi_src.cli.commands.world import world_app
 from huaqi_src.cli.commands.scheduler import scheduler_app
+from huaqi_src.cli.commands.telos import telos_app
 
 app = typer.Typer(
     name="huaqi",
@@ -40,6 +41,7 @@ app.add_typer(study_app, name="study", rich_help_panel="操作工具")
 app.add_typer(report_app, name="report", rich_help_panel="操作工具")
 app.add_typer(world_app, name="world", rich_help_panel="操作工具")
 app.add_typer(scheduler_app, name="scheduler", rich_help_panel="操作工具")
+app.add_typer(telos_app, name="telos", rich_help_panel="操作工具")
 
 
 @app.command("chat")

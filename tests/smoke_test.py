@@ -1848,6 +1848,45 @@ class TestWorldNewsEnhance:
         assert "不应该出现的新闻详情" not in result
 
 
+class TestTelosDistillationScheduling:
+    """telos-distillation-scheduling 功能验收。
+
+    Spec: docs/specs/telos-distillation-scheduling.md
+    """
+
+    def test_dep_asyncio_in_dev(self):
+        """AC-1: pytest-asyncio 在 dev 依赖中。"""
+        import tomllib
+        from pathlib import Path
+
+        pyproject = Path(__file__).parent.parent / "pyproject.toml"
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+        dev_deps = data["project"]["optional-dependencies"]["dev"]
+        assert any("pytest-asyncio" in d for d in dev_deps)
+
+    def test_distillation_entry_exists(self):
+        """AC-3: 蒸馏入口模块存在且可调用。"""
+        from huaqi_src.layers.capabilities.telos_distiller import run_distillation
+        assert callable(run_distillation)
+
+    def test_distillation_no_unprocessed(self, data_dir, set_data_dir):
+        """AC-5: 无未处理信号时正常返回。"""
+        from huaqi_src.layers.capabilities.telos_distiller import run_distillation
+        result = run_distillation(limit=10, user_id="smoke_test_user")
+        assert result["processed"] == 0
+        assert "errors" in result
+
+    def test_cli_telos_app_registered(self):
+        """AC-3: huaqi telos CLI 命令已注册。"""
+        from huaqi_src.cli import app
+        from typer.testing import CliRunner
+        runner = CliRunner()
+        result = runner.invoke(app, ["telos", "--help"])
+        assert result.exit_code == 0
+        assert "distill" in result.stdout
+
+
 # ============================================================================
 # 运行入口
 # ============================================================================
