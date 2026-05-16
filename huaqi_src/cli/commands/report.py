@@ -39,3 +39,14 @@ def weekly_cmd(
     console.print("[dim]正在获取周报...[/dim]")
     content = manager.get_or_generate_report("weekly", date, force)
     console.print(f"\n{content}\n")
+
+@report_app.command("quarterly")
+def quarterly_cmd(
+    force: bool = typer.Option(False, "--force", "-f", help="强制重新生成")
+):
+    """查看或生成季报"""
+    ensure_initialized()
+    manager = ReportManager()
+    console.print("[dim]正在生成季报...[/dim]")
+    content = manager.get_or_generate_report("quarterly", "today", force)
+    console.print(f"\n{content}\n")
