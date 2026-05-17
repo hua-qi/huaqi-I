@@ -1,6 +1,13 @@
 import datetime
+import sys
 from pathlib import Path
 from typing import Optional
+
+
+def _log(msg: str) -> None:
+    """Write to stderr so output is visible in non-TTY CI environments."""
+    sys.stderr.write(f"[Scheduler] {msg}\n")
+    sys.stderr.flush()
 
 
 _JOB_FILENAME_MAP = {
@@ -29,17 +36,23 @@ def _run_scheduled_job(
     filename = get_job_output_filename(job_id, scheduled_at) if output_dir else None
     full_path = str(Path(output_dir).expanduser() / filename) if output_dir and filename else None
 
+    _log(f"开始执行任务 {job_id}, output_dir={output_dir}")
     try:
         content = _call_llm_for_job(job_id, prompt)
+        _log(f"LLM 调用完成, 返回长度={len(content) if content else 0}")
         if full_path and content:
             path = Path(full_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-            print(f"[Scheduler] 任务结果已写入: {full_path}")
+            _log(f"任务结果已写入: {full_path}")
         elif full_path:
-            print(f"[Scheduler] LLM 未返回有效内容，跳过写入: {full_path}")
+            _log(f"LLM 未返回有效内容，跳过写入: {full_path}")
+        else:
+            _log(f"output_dir 为空，跳过文件写入")
     except Exception as e:
-        print(f"[Scheduler] 任务 {job_id} 执行失败: {e}")
+        import traceback
+        _log(f"任务 {job_id} 执行失败: {e}")
+        _log(traceback.format_exc())
         if raise_on_error:
             raise
 
@@ -92,15 +105,21 @@ def _call_llm_for_job(job_id: str, prompt: str) -> str:
     from langchain_core.messages import SystemMessage, HumanMessage
     from huaqi_src.cli.context import build_llm_manager
 
+    _log(f"正在构建 LLM Manager...")
     llm_mgr = build_llm_manager(temperature=0.7, max_tokens=800)
     if llm_mgr is None:
+        _log("build_llm_manager 返回 None（配置未初始化？）")
         return "（LLM 未配置）"
 
     if not llm_mgr._active_provider:
+        _log("_active_provider 为 None")
         return "（未配置任何 LLM 提供商）"
+
     cfg = llm_mgr._active_provider.config
+    _log(f"LLM 配置: provider={cfg.provider}, model={cfg.model}, api_base={cfg.api_base}")
 
     from langchain_openai import ChatOpenAI
+
     llm = ChatOpenAI(
         model=cfg.model,
         api_key=cfg.api_key,
@@ -111,14 +130,18 @@ def _call_llm_for_job(job_id: str, prompt: str) -> str:
 
     if job_id == "learning_daily_push":
         system_prompt = _LEARNING_PUSH_SYSTEM_PROMPT
+        _log("构建学习上下文...")
         context = _build_learning_context()
+        _log(f"学习上下文长度: {len(context)}")
         user_message = f"{prompt}\n\n{context}"
     else:
         system_prompt = f"你是 huaqi，用户的 AI 同伴。请执行以下定时任务：「{job_id}」。"
         user_message = prompt
 
+    _log("调用 LLM invoke...")
     response = llm.invoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_message),
     ])
+    _log(f"LLM 响应完成, 长度={len(response.content) if response.content else 0}")
     return response.content
