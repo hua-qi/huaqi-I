@@ -132,7 +132,14 @@ class ScheduledJobStore:
 
     def load_jobs(self) -> List[ScheduledJob]:
         self._ensure_initialized()
-        return self._load_raw()
+        jobs = self._load_raw()
+        defaults = {j["id"]: j for j in _build_default_jobs()}
+        for job in jobs:
+            if job.output_dir is None and job.id in defaults:
+                default_dir = defaults[job.id].get("output_dir")
+                if default_dir:
+                    job.output_dir = default_dir
+        return jobs
 
     def save_jobs(self, jobs: List[ScheduledJob]):
         self._path.parent.mkdir(parents=True, exist_ok=True)
