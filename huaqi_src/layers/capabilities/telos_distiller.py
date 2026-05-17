@@ -5,6 +5,7 @@
 """
 import asyncio
 import logging
+import os
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def _get_pipeline():
     event_store = GrowthEventStore(adapter=adapter)
 
     telos_dir = get_telos_dir()
-    telos_mgr = TelosManager(telos_dir=telos_dir, git_commit=True)
+    telos_mgr = TelosManager(telos_dir=telos_dir, git_commit=not os.environ.get("CI"))
 
     from huaqi_src.cli.context import build_llm_manager
     llm_mgr = build_llm_manager(temperature=0.3, max_tokens=2000)
