@@ -62,15 +62,21 @@ class QuarterlyReportAgent:
             max_tokens=1200,
         )
 
-        system_prompt = (
-            "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份季度成长报告，"
-            "包含：1）本季度核心成长，2）长期模式识别（正向/需改善），3）目标漂移分析，"
-            "4）关系网络变化，5）下季度建议。报告不超过 800 字，有深度有洞察。"
-        )
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, user = loader.load("layers.capabilities.reports.quarterly", context=context)
+        except Exception:
+            system = (
+                "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份季度成长报告，"
+                "包含：1）本季度核心成长，2）长期模式识别（正向/需改善），3）目标漂移分析，"
+                "4）关系网络变化，5）下季度建议。报告不超过 800 字，有深度有洞察。"
+            )
+            user = f"背景信息：\n{context}"
 
         response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"背景信息：\n{context}"),
+            SystemMessage(content=system),
+            HumanMessage(content=user or f"背景信息：\n{context}"),
         ])
         return response.content
 

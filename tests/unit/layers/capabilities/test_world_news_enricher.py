@@ -44,26 +44,26 @@ OpenAI 今日正式发布了 GPT-5 模型。该模型在推理能力、多模态
 class TestEnricherPrompt:
     def test_prompt_requests_bilingual_format(self):
         """AC-2: prompt 要求中英对照格式。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_PROMPT
-        assert "英文原标题" in _ENRICH_PROMPT or "英文" in _ENRICH_PROMPT
-        assert "链接" in _ENRICH_PROMPT
-        assert "摘要" in _ENRICH_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_FALLBACK
+        assert "英文原标题" in _ENRICH_FALLBACK or "英文" in _ENRICH_FALLBACK
+        assert "链接" in _ENRICH_FALLBACK
+        assert "摘要" in _ENRICH_FALLBACK
 
     def test_prompt_requests_suggestions_section(self):
         """AC-3: prompt 要求重点关注建议板块。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_PROMPT
-        assert "重点关注建议" in _ENRICH_PROMPT
-        assert "分类" in _ENRICH_PROMPT or "领域" in _ENRICH_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_FALLBACK
+        assert "重点关注建议" in _ENRICH_FALLBACK
+        assert "分类" in _ENRICH_FALLBACK or "领域" in _ENRICH_FALLBACK
 
     def test_prompt_requests_chinese_source_handling(self):
         """AC-5: prompt 要求中文源保留原文并扩展。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_PROMPT
-        assert "中文" in _ENRICH_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_FALLBACK
+        assert "中文" in _ENRICH_FALLBACK
 
     def test_prompt_has_user_context_placeholder(self):
         """prompt 包含用户画像占位符。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_PROMPT
-        assert "{user_context}" in _ENRICH_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_FALLBACK
+        assert "{user_context}" in _ENRICH_FALLBACK
 
 
 class TestUserContextSection:

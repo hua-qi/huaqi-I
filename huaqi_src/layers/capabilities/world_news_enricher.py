@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-_ENRICH_PROMPT = """你是一位专业的新闻编辑。请处理以下世界新闻内容：
+_ENRICH_FALLBACK = """你是一位专业的新闻编辑。请处理以下世界新闻内容：
 
 {raw_content}
 
@@ -59,6 +59,22 @@ _ENRICH_PROMPT = """你是一位专业的新闻编辑。请处理以下世界新
 7. **只输出 Markdown**：不要加任何额外说明、前言或结语"""
 
 
+def _load_enrich_prompt(raw_content: str, user_context: str) -> str:
+    try:
+        from huaqi_src.prompts.loader import get_prompt_loader
+        loader = get_prompt_loader()
+        system, user = loader.load(
+            "layers.capabilities.world_news_enricher",
+            raw_content=raw_content, user_context=user_context,
+        )
+        result = (system or "") + ("\n" + user if user else "")
+        return result or ""
+    except Exception:
+        return _ENRICH_FALLBACK.format(
+            raw_content=raw_content, user_context=user_context
+        )
+
+
 def _build_user_context_section(telos_snapshot: str | None) -> str:
     """将 TELOS snapshot 转为 prompt 可用的简短用户画像段落。"""
     if not telos_snapshot or not telos_snapshot.strip():
@@ -99,7 +115,7 @@ class WorldNewsEnricher:
             return False
 
         user_section = _build_user_context_section(user_context)
-        prompt = _ENRICH_PROMPT.format(
+        prompt = _load_enrich_prompt(
             raw_content=raw_content, user_context=user_section
         )
 

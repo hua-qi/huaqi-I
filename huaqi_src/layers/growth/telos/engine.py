@@ -75,164 +75,39 @@ class CombinedStepOutput(BaseModel):
     confidence: float = 0.0
 
 
-_STEP1_PROMPT = """\
-你是用户的个人成长分析师。
-你的任务是分析用户的输入信号，判断它对用户的自我认知有什么影响。
+_TELOS_FALLBACKS: dict[str, str] = {}
 
-以下是当前对这个用户的了解（TELOS 索引）：
-{telos_index}
 
-当前活跃维度：{active_dimensions}
-
-分析以下输入信号：
-来源：{source_type}
-时间：{timestamp}
-内容：{content}
-
-请从以上活跃维度中判断本条信号涉及哪些维度。
-如果信号内容不属于任何现有维度，请在 new_dimension_hint 字段说明。
-
-输出合法 JSON，不要有任何额外文字：
-{{
-  "dimensions": ["..."],
-  "emotion": "positive|negative|neutral",
-  "intensity": 0.0-1.0,
-  "signal_strength": "strong|medium|weak",
-  "strong_reason": "...",
-  "summary": "...",
-  "new_dimension_hint": null,
-  "has_people": true/false,
-  "mentioned_names": ["姓名1", "姓名2"]
-}}"""
-
-_STEP3_PROMPT = """\
-你是用户的个人成长分析师。
-你的任务是判断积累的信号是否说明用户的某个认知发生了变化。
-
-以下是当前对这个用户的了解：
-{telos_index}
-
-以下是最近 {days} 天，关于「{dimension}」维度的 {count} 条信号摘要：
-{signal_summaries}
-
-当前该维度的认知是：
-{current_content}
-
-输出合法 JSON，不要有任何额外文字：
-{{
-  "should_update": true/false,
-  "update_type": "reinforce|challenge|new|null",
-  "confidence": 0.0-1.0,
-  "reason": "...",
-  "suggested_content": "..."
-}}"""
-
-_STEP4_PROMPT = """\
-你是用户的个人成长分析师。
-你的任务是用自然、简洁的语言描述用户认知的变化。
-写给用户自己看，不要用分析腔，要像朋友在帮他整理想法。
-
-维度：{dimension}
-旧版本内容：{old_content}
-触发这次更新的信号摘要：{signal_summaries}
-更新建议：{suggested_content}
-
-输出合法 JSON，不要有任何额外文字：
-{{
-  "new_content": "...",
-  "history_entry": {{
-    "change": "...",
-    "trigger": "..."
-  }}
-}}"""
-
-_STEP5_PROMPT = """\
-你是用户的个人成长见证者。
-你的任务是识别用户真正有意义的内在变化，用温暖的语言记录下来。
-
-判断标准：
-- 核心层维度变化 → 几乎总是值得
-- 中间层维度的方向性转变 → 值得
-- 表面层的日常积累 → 通常不值得
-
-维度：{dimension}（{layer}层）
-变化前：{old_content}
-变化后：{new_content}
-更新原因：{trigger}
-
-输出合法 JSON，不要有任何额外文字：
-{{
-  "is_growth_event": true/false,
-  "narrative": "...",
-  "title": "..."
-}}"""
-
-_REVIEW_STALE_PROMPT = """\
-你是用户的个人成长分析师。
-该维度已超过 {days} 天没有收到新信号。
-请判断当前认知是否可能已经过时。
-
-维度：{dimension}
-当前认知：
-{current_content}
-
-请判断：
-1. 内容是否可能已过时？（考虑时间流逝、人的变化、情境变化）
-2. 如果过时，置信度应该降低多少？（new_consistency_score 应在 0.0~0.6 之间）
-3. 如果仍然有效，维持 consistency_score 不变
-
-输出合法 JSON，不要有任何额外文字：
-{{
-  "is_stale": true/false,
-  "new_consistency_score": 0.0-1.0,
-  "reason": "..."
-}}\
-"""
+def _load_telos_prompt(scene_id: str, **kwargs) -> str:
+    """加载 TELOS 引擎提示词，优先从 PromptLoader，回退到内置默认值。"""
+    try:
+        from huaqi_src.prompts.loader import get_prompt_loader
+        loader = get_prompt_loader()
+        system, user = loader.load(scene_id, **kwargs)
+        return (system or "") + ("\n" + user if user else "")
+    except Exception:
+        import sys
+        sys.stderr.write(f"[TELOS] PromptLoader 不可用，使用内置回退: {scene_id}\n")
+        from huaqi_src.prompts._defaults import _BUILTIN_DEFAULTS
+        raw = _BUILTIN_DEFAULTS.get(scene_id, "")
+        if raw and kwargs:
+            from huaqi_src.prompts.loader import PromptLoader
+            system, user = PromptLoader._parse(raw)
+            result = ""
+            if system:
+                result = system.format(**kwargs)
+            if user:
+                if result:
+                    result += "\n"
+                result += user.format(**kwargs)
+            return result
+        return raw
 
 
 class ReviewOutput(BaseModel):
     is_stale: bool
     new_consistency_score: float
     reason: str
-
-
-_STEP345_COMBINED_PROMPT = """\
-你是用户的个人成长分析师兼见证者。
-请同时完成三件事：
-1. 判断是否应更新「{dimension}」维度的认知
-2. 如果更新，生成新的认知内容和历史记录
-3. 判断这次变化是否是值得记录的成长事件
-
-以下是当前对这个用户的了解：
-{telos_index}
-
-以下是最近 {days} 天，关于「{dimension}」维度的 {count} 条信号摘要：
-{signal_summaries}
-
-当前该维度的认知是：
-{current_content}
-
-判断标准（成长事件）：
-- 核心层维度变化 → 几乎总是值得
-- 中间层维度的方向性转变 → 值得
-- 表面层的日常积累 → 通常不值得
-
-consistency_score 的含义：这些信号指向同一个方向的程度（0.0=完全矛盾，1.0=高度一致）
-
-输出合法 JSON，不要有任何额外文字：
-{{
-  "should_update": true/false,
-  "new_content": "...",
-  "consistency_score": 0.0-1.0,
-  "history_entry": {{
-    "change": "...",
-    "trigger": "..."
-  }},
-  "is_growth_event": true/false,
-  "growth_title": "...",
-  "growth_narrative": "..."
-}}\
-"""
 
 
 def _parse_json(text: str) -> dict:
@@ -260,7 +135,8 @@ class TelosEngine:
 
     def step1_analyze(self, signal: RawSignal) -> Step1Output:
         active_dims = self._active_dimension_names()
-        prompt = _STEP1_PROMPT.format(
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step1",
             telos_index=self._telos_index(),
             active_dimensions=", ".join(active_dims),
             source_type=signal.source_type.value,
@@ -278,7 +154,8 @@ class TelosEngine:
         days: int,
     ) -> Step3Output:
         dim = self._mgr.get(dimension)
-        prompt = _STEP3_PROMPT.format(
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step3",
             telos_index=self._telos_index(),
             days=days,
             dimension=dimension,
@@ -297,7 +174,8 @@ class TelosEngine:
         signal_summaries: List[str],
     ) -> Step4Output:
         dim = self._mgr.get(dimension)
-        prompt = _STEP4_PROMPT.format(
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step4",
             dimension=dimension,
             old_content=dim.content,
             signal_summaries="\n".join(f"- {s}" for s in signal_summaries),
@@ -334,7 +212,8 @@ class TelosEngine:
         if dim.history:
             old_content = dim.history[-2].change if len(dim.history) >= 2 else ""
 
-        prompt = _STEP5_PROMPT.format(
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step5",
             dimension=dimension,
             layer=layer.value,
             old_content=old_content,
@@ -351,7 +230,8 @@ class TelosEngine:
         days_since_last_signal: int,
     ) -> ReviewOutput:
         dim = self._mgr.get(dimension)
-        prompt = _REVIEW_STALE_PROMPT.format(
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.review_stale",
             days=days_since_last_signal,
             dimension=dimension,
             current_content=dim.content,
@@ -387,7 +267,8 @@ class TelosEngine:
         recent_signal_count: int,
     ) -> CombinedStepOutput:
         dim = self._mgr.get(dimension)
-        prompt = _STEP345_COMBINED_PROMPT.format(
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
             telos_index=self._telos_index(),
             days=days,
             dimension=dimension,

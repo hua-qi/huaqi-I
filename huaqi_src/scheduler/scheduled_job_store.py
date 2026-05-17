@@ -19,6 +19,7 @@ class ScheduledJob(BaseModel):
     enabled: bool = True
     prompt: str
     output_dir: Optional[str] = None
+    prompt_scene: Optional[str] = None  # 提示词文件 scene ID，如 scheduler.jobs.morning_brief
 
     @field_validator("cron")
     @classmethod
@@ -47,6 +48,7 @@ def _build_default_jobs() -> List[dict]:
             "enabled": True,
             "prompt": "请生成今日晨间简报，总结近期重点事项、今日日程安排和值得关注的信息。",
             "output_dir": _get_default_output_dir("daily"),
+            "prompt_scene": "scheduler.jobs.morning_brief",
         },
         {
             "id": "daily_report",
@@ -55,6 +57,7 @@ def _build_default_jobs() -> List[dict]:
             "enabled": True,
             "prompt": "请生成今日工作复盘报告，总结今天的聊天记录、完成的任务和学习内容。",
             "output_dir": _get_default_output_dir("daily"),
+            "prompt_scene": "scheduler.jobs.daily_report",
         },
         {
             "id": "weekly_report",
@@ -63,6 +66,7 @@ def _build_default_jobs() -> List[dict]:
             "enabled": True,
             "prompt": "请生成本周周报，总结本周的工作、学习和成长轨迹。",
             "output_dir": _get_default_output_dir("weekly"),
+            "prompt_scene": "scheduler.jobs.weekly_report",
         },
         {
             "id": "quarterly_report",
@@ -71,6 +75,7 @@ def _build_default_jobs() -> List[dict]:
             "enabled": True,
             "prompt": "请生成本季度季报，回顾本季度的目标达成情况和成长轨迹。",
             "output_dir": _get_default_output_dir("quarterly"),
+            "prompt_scene": "scheduler.jobs.quarterly_report",
         },
         {
             "id": "learning_daily_push",
@@ -79,6 +84,7 @@ def _build_default_jobs() -> List[dict]:
             "enabled": True,
             "prompt": "请推送今日学习内容，从进行中的课程中选取一个知识点出题复习。",
             "output_dir": _get_default_output_dir("learning", parent=""),
+            "prompt_scene": "scheduler.jobs.learning_daily_push",
         },
         {
             "id": "world_fetch",
@@ -86,6 +92,7 @@ def _build_default_jobs() -> List[dict]:
             "cron": "0 7 * * *",
             "enabled": True,
             "prompt": "请采集今日世界新闻并存储到本地。",
+            "prompt_scene": "scheduler.jobs.world_fetch",
         },
     ]
 

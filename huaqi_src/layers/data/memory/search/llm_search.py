@@ -27,24 +27,37 @@ class LLMRelevanceSearch:
     不依赖 Embedding 模型，兼容所有 LLM
     """
     
-    RELEVANCE_PROMPT = """请判断以下查询与记忆内容的相关性。
+    RELEVANCE_PROMPT = None  # 由 _load_relevance_prompt 动态加载
 
-查询: {query}
-
-记忆内容:
-{content}
-
-请分析：
-1. 这段记忆是否回答了查询？
-2. 这段记忆是否包含查询相关的信息？
-3. 相关程度如何？（0-1 分）
-
-以 JSON 格式返回：
-{{
-    "relevant": true/false,
-    "score": 0.85,
-    "reason": "这段记忆提到了...与查询相关"
-}}"""
+    @staticmethod
+    def _load_relevance_prompt(query: str, content: str) -> str:
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, user = loader.load(
+                "layers.data.memory.relevance", query=query, content=content,
+            )
+            return user or system or ""
+        except Exception:
+            return (
+                "请判断以下查询与记忆内容的相关性。\n"
+                "\n"
+                f"查询: {query}\n"
+                "\n"
+                f"记忆内容:\n{content}\n"
+                "\n"
+                "请分析：\n"
+                "1. 这段记忆是否回答了查询？\n"
+                "2. 这段记忆是否包含查询相关的信息？\n"
+                "3. 相关程度如何？（0-1 分）\n"
+                "\n"
+                "以 JSON 格式返回：\n"
+                "{{\n"
+                '    "relevant": true/false,\n'
+                '    "score": 0.85,\n'
+                '    "reason": "这段记忆提到了...与查询相关"\n'
+                "}}"
+            )
     
     def __init__(self, llm_manager):
         self.llm_manager = llm_manager

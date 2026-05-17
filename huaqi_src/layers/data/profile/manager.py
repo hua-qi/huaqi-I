@@ -84,36 +84,45 @@ class UserProfileManager:
         """使用 LLM 智能提取用户信息"""
         current_summary = self.profile.get_summary() or "暂无已知信息"
 
-        prompt = f"""从用户消息中提取用户的个人信息。
-
-规则：
-1. 只提取明确提到的信息，不要猜测
-2. 如果用户说"我是子蒙"，提取 name="子蒙"
-3. 如果用户说"我是一名工程师"，提取 occupation="工程师"
-4. 如果用户说"我住在北京"，提取 location="北京"
-5. 如果用户说"我会Python"，提取 skills=["Python"]
-6. 如果用户说"我喜欢阅读"，提取 hobbies=["阅读"]
-7. 如果没有新信息，返回空对象 {{}}
-
-当前已知信息：
-{current_summary}
-
-用户消息：
-{user_message}
-
-请提取信息，以 JSON 格式返回：
-{{
-    "name": "名字",
-    "nickname": "昵称",
-    "occupation": "职业",
-    "location": "所在地",
-    "company": "公司",
-    "skills": ["技能1", "技能2"],
-    "hobbies": ["爱好1", "爱好2"],
-    "life_goals": ["目标1"]
-}}
-
-只返回 JSON，不要其他内容。"""
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, user = loader.load(
+                "layers.data.profile.extract",
+                current_summary=current_summary, user_message=user_message,
+            )
+            prompt = user or system or ""
+        except Exception:
+            prompt = (
+                "从用户消息中提取用户的个人信息。\n"
+                "\n"
+                "规则：\n"
+                "1. 只提取明确提到的信息，不要猜测\n"
+                '2. 如果用户说"我是子蒙"，提取 name="子蒙"\n'
+                '3. 如果用户说"我是一名工程师"，提取 occupation="工程师"\n'
+                '4. 如果用户说"我住在北京"，提取 location="北京"\n'
+                '5. 如果用户说"我会Python"，提取 skills=["Python"]\n'
+                '6. 如果用户说"我喜欢阅读"，提取 hobbies=["阅读"]\n'
+                "7. 如果没有新信息，返回空对象 {{}}\n"
+                "\n"
+                f"当前已知信息：\n{current_summary}\n"
+                "\n"
+                f"用户消息：\n{user_message}\n"
+                "\n"
+                "请提取信息，以 JSON 格式返回：\n"
+                "{{\n"
+                '    "name": "名字",\n'
+                '    "nickname": "昵称",\n'
+                '    "occupation": "职业",\n'
+                '    "location": "所在地",\n'
+                '    "company": "公司",\n'
+                '    "skills": ["技能1", "技能2"],\n'
+                '    "hobbies": ["爱好1", "爱好2"],\n'
+                '    "life_goals": ["目标1"]\n'
+                "}}\n"
+                "\n"
+                "只返回 JSON，不要其他内容。"
+            )
 
         try:
             from huaqi_src.layers.capabilities.llm.manager import Message
@@ -172,23 +181,31 @@ class UserProfileManager:
 
     def get_llm_extraction_prompt(self) -> str:
         """获取用于 LLM 提取用户信息的提示词"""
-        return """从用户的消息中提取个人信息。只提取明确提到的信息，不要猜测。
-
-当前已知信息：
-{current_profile}
-
-请从以下消息中提取新的信息（JSON格式）：
-{{
-    "name": "名字（如果有）",
-    "nickname": "昵称（如果有）",
-    "occupation": "职业（如果有）",
-    "location": "所在地（如果有）",
-    "skills": ["技能1", "技能2"],
-    "hobbies": ["爱好1", "爱好2"],
-    "life_goals": ["目标1", "目标2"]
-}}
-
-只返回JSON，如果没有新信息返回空对象 {{}}。"""
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, _ = loader.load("layers.data.profile.extract")
+            return system or ""
+        except Exception:
+            return (
+                "从用户的消息中提取个人信息。只提取明确提到的信息，不要猜测。\n"
+                "\n"
+                "当前已知信息：\n"
+                "{current_profile}\n"
+                "\n"
+                "请从以下消息中提取新的信息（JSON格式）：\n"
+                "{{\n"
+                '    "name": "名字（如果有）",\n'
+                '    "nickname": "昵称（如果有）",\n'
+                '    "occupation": "职业（如果有）",\n'
+                '    "location": "所在地（如果有）",\n'
+                '    "skills": ["技能1", "技能2"],\n'
+                '    "hobbies": ["爱好1", "爱好2"],\n'
+                '    "life_goals": ["目标1", "目标2"]\n'
+                "}}\n"
+                "\n"
+                "只返回JSON，如果没有新信息返回空对象 {{}}。"
+            )
 
     def extract_with_llm(self, user_message: str, llm_manager) -> Dict[str, Any]:
         """使用 LLM 提取用户信息"""

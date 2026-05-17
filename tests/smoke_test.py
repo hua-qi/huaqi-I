@@ -1628,13 +1628,13 @@ class TestBasicIntegration:
 # Feature Acceptance Tests — 按 Spec 的 AC 生成的验收测试
 # ============================================================================
 # 新增 feature 时，在此区域追加 Test<FeatureName> 类。
-# 每个测试方法对应 docs/specs/<feature-name>.md 中的一条 AC。
+# 每个测试方法对应 docs/iterations/<feature-name>.md 中的一条 AC。
 #
 # 模板：
 # class Test<FeatureName>:
 #     \"\"\"<feature-name> 功能验收。
 #
-#     Spec: docs/specs/<feature-name>.md
+#     Spec: docs/iterations/<YYYY-MM-DD>-<feature>/spec.md
 #     \"\"\"
 #
 #     def test_<ac_scenario>(self, data_dir, set_data_dir):
@@ -1647,7 +1647,7 @@ class TestBasicIntegration:
 class TestGitHubActionsWorkflows:
     """GitHub Actions 定时任务迁移功能验收。
 
-    Spec: docs/specs/2026-05-14-reports-github-actions.md
+    Spec: docs/iterations/2026-05-14-reports-github-actions/spec.md
     """
 
     def test_six_workflow_files_exist(self, data_dir, set_data_dir):
@@ -1728,7 +1728,7 @@ class TestGitHubActionsWorkflows:
 class TestWorldNewsEnhance:
     """world-news-enhance 功能验收。
 
-    Spec: docs/specs/world-news-enhance.md
+    Spec: docs/iterations/2026-05-18-world-news-enhance/spec.md
     """
 
     def test_rss_source_content_includes_link(self, data_dir, set_data_dir):
@@ -1766,13 +1766,13 @@ class TestWorldNewsEnhance:
 
     def test_enricher_prompt_requires_key_sections(self, data_dir, set_data_dir):
         """AC-2/AC-3/AC-5: 增强 prompt 要求中英对照、重点关注建议、中文源处理。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_FALLBACK
 
-        assert "英文原标题" in _ENRICH_PROMPT or "英文" in _ENRICH_PROMPT
-        assert "链接" in _ENRICH_PROMPT
-        assert "重点关注建议" in _ENRICH_PROMPT
-        assert "中文" in _ENRICH_PROMPT
-        assert "{user_context}" in _ENRICH_PROMPT
+        assert "英文原标题" in _ENRICH_FALLBACK or "英文" in _ENRICH_FALLBACK
+        assert "链接" in _ENRICH_FALLBACK
+        assert "重点关注建议" in _ENRICH_FALLBACK
+        assert "中文" in _ENRICH_FALLBACK
+        assert "{user_context}" in _ENRICH_FALLBACK
 
     def test_enricher_graceful_degradation(self, data_dir, set_data_dir):
         """AC-6: 空文件和 LLM 失败时优雅降级。"""
@@ -1851,7 +1851,7 @@ class TestWorldNewsEnhance:
 class TestTelosDistillationScheduling:
     """telos-distillation-scheduling 功能验收。
 
-    Spec: docs/specs/telos-distillation-scheduling.md
+    Spec: docs/iterations/2026-05-18-telos-distillation-scheduling/spec.md
     """
 
     def test_dep_asyncio_in_dev(self):
@@ -1885,6 +1885,219 @@ class TestTelosDistillationScheduling:
         result = runner.invoke(app, ["telos", "--help"])
         assert result.exit_code == 0
         assert "distill" in result.stdout
+
+
+class TestPromptLoader:
+    """PromptLoader 核心功能验收。
+
+    Spec: docs/iterations/2026-05-18-prompts-overhaul/spec.md
+    """
+
+    def test_loader_module_importable(self):
+        """AC-1: PromptLoader 模块可导入。"""
+        from huaqi_src.prompts import PromptLoader, get_prompt_loader
+        assert PromptLoader is not None
+        assert get_prompt_loader is not None
+
+    def test_loader_initializes_with_dir(self, tmp_path):
+        """AC-1: PromptLoader 能从目录初始化并加载文件。"""
+        from huaqi_src.prompts import PromptLoader
+        d = tmp_path / "prompts"
+        d.mkdir()
+        (d / "test.md").write_text("测试", encoding="utf-8")
+        loader = PromptLoader(d)
+        system, _ = loader.load("test")
+        assert "测试" in system
+
+    def test_hot_reload_detects_file_change(self, tmp_path):
+        """AC-9: 热更新——修改文件后下一次加载使用新内容。"""
+        from huaqi_src.prompts import PromptLoader
+        d = tmp_path / "prompts"
+        d.mkdir()
+        f = d / "hot.md"
+        f.write_text("v1", encoding="utf-8")
+        loader = PromptLoader(d)
+        s1, _ = loader.load("hot")
+        f.write_text("v2", encoding="utf-8")
+        s2, _ = loader.load("hot")
+        assert "v1" in s1
+        assert "v2" in s2
+
+    def test_fallback_when_file_missing(self, tmp_path):
+        """AC-8: 场景文件缺失时回退到内置默认值，不抛异常。"""
+        from huaqi_src.prompts import PromptLoader
+        d = tmp_path / "prompts"
+        d.mkdir()
+        loader = PromptLoader(d)
+        system, user = loader.load("nonexistent.scene.xyz")
+        has_content = (system and len(system) > 0) or (user and len(user) > 0)
+        assert has_content
+
+    def test_template_injection(self, tmp_path):
+        """AC-6: 模板变量正确注入。"""
+        from huaqi_src.prompts import PromptLoader
+        d = tmp_path / "prompts"
+        d.mkdir()
+        (d / "tpl.md").write_text("你好 {name}", encoding="utf-8")
+        loader = PromptLoader(d)
+        system, _ = loader.load("tpl", name="子蒙")
+        assert "子蒙" in system
+
+    def test_unicode_emoji(self, tmp_path):
+        """AC-10: 中文/emoji 正确加载。"""
+        from huaqi_src.prompts import PromptLoader
+        d = tmp_path / "prompts"
+        d.mkdir()
+        (d / "unicode.md").write_text("🎉 你好 花旗 😊", encoding="utf-8")
+        loader = PromptLoader(d)
+        system, _ = loader.load("unicode")
+        assert "🎉" in system
+        assert "花旗" in system
+
+
+class TestPromptInitializer:
+    """PromptInitializer 初始化验收。
+
+    Spec: docs/iterations/2026-05-18-prompts-overhaul/spec.md
+    """
+
+    def test_initializer_importable(self):
+        """AC-20: PromptInitializer 模块可导入。"""
+        from huaqi_src.prompts.initializer import PromptInitializer
+        assert PromptInitializer is not None
+
+    def test_auto_init_creates_prompts_dir(self, tmp_path):
+        """AC-20: 自动初始化创建完整目录结构。"""
+        from huaqi_src.prompts.initializer import PromptInitializer
+        d = tmp_path / "prompts"
+        init = PromptInitializer(d)
+        init.ensure()
+        assert d.exists()
+        assert (d / "base.md").exists()
+        assert (d / "INDEX.md").exists()
+        assert len(list(d.rglob("*.md"))) >= 3
+
+    def test_preserves_user_modified_files(self, tmp_path):
+        """AC-21: 用户编辑过的文件不会被覆盖。"""
+        from huaqi_src.prompts.initializer import PromptInitializer
+        d = tmp_path / "prompts"
+        d.mkdir()
+        base = d / "base.md"
+        base.write_text("custom", encoding="utf-8")
+        init = PromptInitializer(d)
+        init.ensure()
+        assert base.read_text(encoding="utf-8") == "custom"
+
+    def test_base_content_defines_telos_relationship(self, tmp_path):
+        """AC-18: base.md 包含 TELOS 维度关系定义。"""
+        from huaqi_src.prompts.initializer import PromptInitializer
+        d = tmp_path / "prompts"
+        init = PromptInitializer(d)
+        init.ensure()
+        content = (d / "base.md").read_text(encoding="utf-8")
+        assert "TELOS" in content
+        assert "核心" in content or "Core" in content
+
+
+class TestPromptsOverhaul:
+    """提示词体系重构功能验收。
+
+    Spec: docs/specs/prompts-overhaul.md
+    """
+
+    def test_all_scene_ids_have_defaults(self):
+        """AC-37: 所有 scene ID 都有内置默认值。"""
+        from huaqi_src.prompts._defaults import _BUILTIN_DEFAULTS, _BASE_FALLBACK
+        assert len(_BUILTIN_DEFAULTS) >= 30
+        assert _BASE_FALLBACK  # base.md 单独存储
+        # 核心场景必须存在
+        core_scenes = [
+            "agent.chat",
+            "cli.chat",
+            "scheduler.jobs.morning_brief",
+            "scheduler.jobs.daily_report",
+            "scheduler.jobs.weekly_report",
+            "scheduler.jobs.quarterly_report",
+            "scheduler.jobs.learning_daily_push",
+            "scheduler.jobs.world_fetch",
+            "layers.growth.telos.engine.step1",
+            "layers.growth.telos.engine.step345",
+            "layers.growth.telos.context.chat",
+            "layers.capabilities.reports.morning",
+            "layers.capabilities.reports.growth",
+            "layers.capabilities.world_news_enricher",
+            "layers.capabilities.learning.outline",
+            "layers.capabilities.onboarding.telos_generator",
+            "layers.capabilities.personality.engine",
+            "layers.data.profile.narrative",
+            "layers.data.profile.extract",
+            "layers.data.memory.relevance",
+        ]
+        for scene in core_scenes:
+            assert scene in _BUILTIN_DEFAULTS, f"缺少内置默认值: {scene}"
+
+    def test_prompts_parse_without_error(self):
+        """所有内置默认值可被 PromptLoader 正确解析。"""
+        from huaqi_src.prompts._defaults import _BUILTIN_DEFAULTS
+        from huaqi_src.prompts.loader import PromptLoader
+
+        for scene_id, raw in _BUILTIN_DEFAULTS.items():
+            try:
+                system, user = PromptLoader._parse(raw)
+                assert isinstance(system, (str, type(None)))
+                assert isinstance(user, (str, type(None)))
+            except Exception as e:
+                pytest.fail(f"解析失败 scene={scene_id}: {e}")
+
+    def test_fallback_works_without_data_dir(self, monkeypatch):
+        """AC-41: 数据目录不可用时回退到内置默认值。"""
+        from huaqi_src.prompts.loader import PromptLoader
+        from pathlib import Path
+
+        nonexistent = Path("/tmp/nonexistent_prompts_dir_xyz")
+        loader = PromptLoader(nonexistent)
+        system, user = loader.load("agent.chat",
+            personality_context="", user_profile_context="", telos_snapshot="")
+        assert system is not None
+        assert "Huaqi" in system or "花旗" in system
+
+    def test_empty_file_uses_fallback(self, tmp_path):
+        """AC-40: 空 prompt 文件时使用内置默认值。"""
+        from huaqi_src.prompts.loader import PromptLoader
+
+        d = tmp_path / "prompts"
+        d.mkdir()
+        (d / "agent").mkdir()
+        (d / "agent" / "chat.md").write_text("", encoding="utf-8")
+
+        loader = PromptLoader(d)
+        system, user = loader.load("agent.chat",
+            personality_context="", user_profile_context="", telos_snapshot="")
+        assert system is not None
+
+    def test_all_report_scenes_have_prompt_files(self, tmp_path):
+        """所有报告场景可被 PromptLoader 加载。"""
+        from huaqi_src.prompts.initializer import PromptInitializer
+        from huaqi_src.prompts.loader import PromptLoader
+
+        d = tmp_path / "prompts"
+        init = PromptInitializer(d)
+        init.ensure()
+
+        loader = PromptLoader(d)
+        report_scenes = [
+            "layers.capabilities.reports.morning",
+            "layers.capabilities.reports.daily",
+            "layers.capabilities.reports.weekly",
+            "layers.capabilities.reports.quarterly",
+            "layers.capabilities.reports.growth",
+        ]
+        for scene in report_scenes:
+            kwargs = {"context": "test"}
+            if "growth" in scene:
+                kwargs["period_label"] = "测试期"
+            system, _ = loader.load(scene, **kwargs)
+            assert system is not None, f"scene={scene} 加载失败"
 
 
 # ============================================================================

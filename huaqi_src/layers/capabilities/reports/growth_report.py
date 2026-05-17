@@ -49,11 +49,6 @@ class GrowthReport(BaseModel):
         return "\n".join(lines)
 
 
-_REPORT_SYSTEM = """\
-你是用户的成长伙伴 Huaqi。
-根据以下背景信息，生成一份{period_label}成长报告。
-要求：温暖、有洞察力，不超过 400 字，用第二人称（"你"）。"""
-
 _TEMPLATE_NO_EVENTS = "本期没有记录到明显的认知变化，但每一天的输入都在积累中。继续保持。"
 
 
@@ -105,8 +100,26 @@ class GrowthReportBuilder:
 
         if self._llm is not None:
             ctx = self.build_context(user_id, days)
-            prompt = _REPORT_SYSTEM.format(period_label=period_label) + f"\n\n背景信息：\n{ctx}"
-            response = self._llm.invoke(prompt)
+            try:
+                from huaqi_src.prompts.loader import get_prompt_loader
+                loader = get_prompt_loader()
+                system, user = loader.load(
+                    "layers.capabilities.reports.growth",
+                    period_label=period_label, context=ctx,
+                )
+                user_msg = user or f"背景信息：\n{ctx}"
+            except Exception:
+                system = (
+                    f"你是用户的成长伙伴 Huaqi。"
+                    f"根据以下背景信息，生成一份{period_label}成长报告。"
+                    f"要求：温暖、有洞察力，不超过 400 字，用第二人称（\"你\"）。"
+                )
+                user_msg = f"背景信息：\n{ctx}"
+            from langchain_core.messages import SystemMessage, HumanMessage
+            response = self._llm.invoke([
+                SystemMessage(content=system),
+                HumanMessage(content=user_msg),
+            ])
             narrative = response.content.strip()
         else:
             if recent_events:

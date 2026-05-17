@@ -3,34 +3,40 @@ from typing import Any, List, Optional
 from huaqi_src.agent.state import AgentState
 from huaqi_src.layers.growth.telos.manager import TelosManager
 
-_PART1_CHAT = """\
-你是 Huaqi，用户的个人成长伙伴。
-你了解这个用户——他们的信念、目标、挑战、成长历程。
-你的回应要基于对他们的真实了解，而不是泛泛而谈。
-语气：温暖、直接、有洞察力。不说废话，不说教。"""
-
-_PART1_ONBOARDING = """\
-你是 Huaqi，用户的个人成长伙伴。
-这是你们第一次见面。你正在通过对话了解这个用户。
-语气：像朋友第一次深聊，好奇、温暖、不评判。
-每次只问一个问题，认真回应用户的每一个回答。"""
-
-_PART1_REPORT = """\
-你是 Huaqi，用户的个人成长伙伴。
-你正在为用户生成成长回顾报告。
-语气：客观、温暖、有洞察力。用数据说话，但不冷漠。"""
-
-_PART1_DISTILL = """\
-你是 Huaqi，用户的个人成长伙伴。
-你正在分析用户最近的输入信号，提炼成长洞察。
-专注于模式识别，不要过度解读单条信号。"""
-
-_PART1_MAP = {
-    "chat": _PART1_CHAT,
-    "onboarding": _PART1_ONBOARDING,
-    "report": _PART1_REPORT,
-    "distill": _PART1_DISTILL,
+_TELOS_CONTEXT_DEFAULTS = {
+    "chat": (
+        "你是 Huaqi，用户的个人成长伙伴。"
+        "你了解这个用户——他们的信念、目标、挑战、成长历程。"
+        "你的回应要基于对他们的真实了解，而不是泛泛而谈。"
+        "语气：温暖、直接、有洞察力。不说废话，不说教。"
+    ),
+    "onboarding": (
+        "你是 Huaqi，用户的个人成长伙伴。"
+        "这是你们第一次见面。你正在通过对话了解这个用户。"
+        "语气：像朋友第一次深聊，好奇、温暖、不评判。"
+        "每次只问一个问题，认真回应用户的每一个回答。"
+    ),
+    "report": (
+        "你是 Huaqi，用户的个人成长伙伴。"
+        "你正在为用户生成成长回顾报告。"
+        "语气：客观、温暖、有洞察力。用数据说话，但不冷漠。"
+    ),
+    "distill": (
+        "你是 Huaqi，用户的个人成长伙伴。"
+        "你正在分析用户最近的输入信号，提炼成长洞察。"
+        "专注于模式识别，不要过度解读单条信号。"
+    ),
 }
+
+
+def _load_part1(mode: str) -> str:
+    try:
+        from huaqi_src.prompts.loader import get_prompt_loader
+        loader = get_prompt_loader()
+        system, _ = loader.load(f"layers.growth.telos.context.{mode}")
+        return system or _TELOS_CONTEXT_DEFAULTS.get(mode, _TELOS_CONTEXT_DEFAULTS["chat"])
+    except Exception:
+        return _TELOS_CONTEXT_DEFAULTS.get(mode, _TELOS_CONTEXT_DEFAULTS["chat"])
 
 
 class TelosContextBuilder:
@@ -92,7 +98,7 @@ class SystemPromptBuilder:
         relevant_history: List[str],
         interaction_mode: str,
     ) -> str:
-        part1 = _PART1_MAP.get(interaction_mode, _PART1_CHAT)
+        part1 = _load_part1(interaction_mode)
 
         parts = [part1]
 

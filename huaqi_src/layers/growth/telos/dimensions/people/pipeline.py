@@ -7,35 +7,43 @@ from .graph import PeopleGraph
 from .models import Person, InteractionLog, EmotionalTimeline
 
 
-_PROMPT = """\
-分析以下信号文本，提取其中出现的人物互动信息。
-
-信号文本：
-{content}
-
-已知人物列表（摘要）：
-{known_people}
-
-本次信号中提到的人名：{mentioned_names}
-
-对每个提到的人物，提取：
-- interaction_type: 从 [合作, 冲突, 日常, 初识, 久未联系] 中选择
-- emotional_score: 此次互动对用户情感的影响，-1.0（极负面）到 1.0（极正面）
-- summary: 一句话描述此次互动
-- new_profile: 若发现新的画像信息（职位/性格/兴趣），填写；否则 null
-- new_relation_type: 若关系类型发生变化，填写；否则 null
-
-只返回 JSON 数组，不要其他内容：
-[
-  {{
-    "name": "姓名",
-    "interaction_type": "...",
-    "emotional_score": 0.0,
-    "summary": "...",
-    "new_profile": null,
-    "new_relation_type": null
-  }}
-]"""
+def _load_pipeline_prompt(**kwargs) -> str:
+    try:
+        from huaqi_src.prompts.loader import get_prompt_loader
+        loader = get_prompt_loader()
+        system, user = loader.load(
+            "layers.growth.telos.dimensions.people.pipeline", **kwargs
+        )
+        return user or system or ""
+    except Exception:
+        content = kwargs.get("content", "")
+        known_people = kwargs.get("known_people", "")
+        mentioned_names = kwargs.get("mentioned_names", "")
+        return (
+            "分析以下信号文本，提取其中出现的人物互动信息。\n"
+            "\n"
+            f"信号文本：\n{content}\n"
+            "\n"
+            f"已知人物列表（摘要）：\n{known_people}\n"
+            "\n"
+            f"本次信号中提到的人名：{mentioned_names}\n"
+            "\n"
+            "对每个提到的人物，提取：\n"
+            "- interaction_type: 从 [合作, 冲突, 日常, 初识, 久未联系] 中选择\n"
+            "- emotional_score: 此次互动对用户情感的影响，-1.0（极负面）到 1.0（极正面）\n"
+            "- summary: 一句话描述此次互动\n"
+            "- new_profile: 若发现新的画像信息（职位/性格/兴趣），填写；否则 null\n"
+            "- new_relation_type: 若关系类型发生变化，填写；否则 null\n"
+            "\n"
+            "只返回 JSON 数组，不要其他内容：\n"
+            '[\n  {{\n    "name": "姓名",\n'
+            '    "interaction_type": "...",\n'
+            '    "emotional_score": 0.0,\n'
+            '    "summary": "...",\n'
+            '    "new_profile": null,\n'
+            '    "new_relation_type": null\n'
+            "  }}\n]"
+        )
 
 
 class PeoplePipeline:
@@ -61,7 +69,7 @@ class PeoplePipeline:
         if not mentioned_names:
             return []
 
-        prompt = _PROMPT.format(
+        prompt = _load_pipeline_prompt(
             content=signal.content,
             known_people=self._known_people_summary(mentioned_names),
             mentioned_names="、".join(mentioned_names),

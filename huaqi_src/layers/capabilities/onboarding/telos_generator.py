@@ -5,19 +5,29 @@ from huaqi_src.layers.capabilities.onboarding.questionnaire import OnboardingSes
 from huaqi_src.layers.growth.telos.manager import TelosManager
 from huaqi_src.layers.growth.telos.models import STANDARD_DIMENSIONS, STANDARD_DIMENSION_LAYERS
 
-_GENERATE_PROMPT = """\
-根据用户的自述，为每个有回答的维度生成初始认知描述。
-要求：
-- 语言简洁，不要分析腔，像朋友在帮他整理想法
-- 每个维度 50 字以内
-- 没有回答的维度输出 null
-
-用户回答：
-{qa_text}
-
-请为以下维度生成内容：{dimensions}
-
-输出合法 JSON，格式：{{"dimension_name": "内容或 null"}}"""
+def _load_onboarding_prompt(qa_text: str, dimensions: str) -> str:
+    try:
+        from huaqi_src.prompts.loader import get_prompt_loader
+        loader = get_prompt_loader()
+        system, user = loader.load(
+            "layers.capabilities.onboarding.telos_generator",
+            qa_text=qa_text, dimensions=dimensions,
+        )
+        return user or system or ""
+    except Exception:
+        return (
+            "根据用户的自述，为每个有回答的维度生成初始认知描述。\n"
+            "要求：\n"
+            "- 语言简洁，不要分析腔，像朋友在帮他整理想法\n"
+            "- 每个维度 50 字以内\n"
+            "- 没有回答的维度输出 null\n"
+            "\n"
+            f"用户回答：\n{qa_text}\n"
+            "\n"
+            f"请为以下维度生成内容：{dimensions}\n"
+            "\n"
+            '输出合法 JSON，格式：{{"dimension_name": "内容或 null"}}'
+        )
 
 
 class OnboardingTelosGenerator:
@@ -41,7 +51,7 @@ class OnboardingTelosGenerator:
         if not answered_dims:
             return
 
-        prompt = _GENERATE_PROMPT.format(
+        prompt = _load_onboarding_prompt(
             qa_text=qa_text,
             dimensions=", ".join(answered_dims),
         )

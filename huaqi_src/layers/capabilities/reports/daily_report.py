@@ -58,15 +58,21 @@ class DailyReportAgent:
             max_tokens=600,
         )
 
-        system_prompt = (
-            "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份简洁的日终复盘报告，"
-            "包含：1）今日主要收获和亮点，2）情绪和状态观察，3）明日建议。"
-            "报告应简短，不超过 400 字，语气温暖。"
-        )
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, user = loader.load("layers.capabilities.reports.daily", context=context)
+        except Exception:
+            system = (
+                "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份简洁的日终复盘报告，"
+                "包含：1）今日主要收获和亮点，2）情绪和状态观察，3）明日建议。"
+                "报告应简短，不超过 400 字，语气温暖。"
+            )
+            user = f"背景信息：\n{context}"
 
         response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"背景信息：\n{context}"),
+            SystemMessage(content=system),
+            HumanMessage(content=user or f"背景信息：\n{context}"),
         ])
         return response.content
 

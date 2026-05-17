@@ -59,15 +59,21 @@ class WeeklyReportAgent:
             max_tokens=800,
         )
 
-        system_prompt = (
-            "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份本周成长报告，"
-            "包含：1）本周成长亮点，2）目标进展，3）值得关注的关系动态，4）下周建议。"
-            "报告不超过 600 字，语气温暖有洞察力。"
-        )
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, user = loader.load("layers.capabilities.reports.weekly", context=context)
+        except Exception:
+            system = (
+                "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份本周成长报告，"
+                "包含：1）本周成长亮点，2）目标进展，3）值得关注的关系动态，4）下周建议。"
+                "报告不超过 600 字，语气温暖有洞察力。"
+            )
+            user = f"背景信息：\n{context}"
 
         response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"背景信息：\n{context}"),
+            SystemMessage(content=system),
+            HumanMessage(content=user or f"背景信息：\n{context}"),
         ])
         return response.content
 

@@ -104,24 +104,48 @@ class PersonalityEngine:
         self.save()
     
     def to_prompt(self) -> str:
-        """转换为系统提示词"""
+        """转换为系统提示词，优先从 PromptLoader 加载模板。"""
         p = self.profile
-        return f"""你是 {p.name}，用户的个人 AI {p.role}。
+        proactivity_text = "主动关心用户的进展" if p.proactivity > 0.5 else "等待用户主动分享"
+        challenge_text = "适当挑战用户的想法" if p.challenge_user else "支持用户的决定"
+        advice_text = "适时给出建议" if p.give_advice else "倾听为主"
+        emoji_text = "适当使用 emoji" if p.use_emoji else "保持专业"
+        markdown_text = "可以使用 Markdown" if p.use_markdown else "使用纯文本"
 
-沟通风格: {p.tone}
-正式程度: {p.formality}
-共情水平: {p.empathy}
-
-价值观:
-{chr(10).join(f"- {v}" for v in p.values)}
-
-行为准则:
-- {'主动关心用户的进展' if p.proactivity > 0.5 else '等待用户主动分享'}
-- {'适当挑战用户的想法' if p.challenge_user else '支持用户的决定'}
-- {'适时给出建议' if p.give_advice else '倾听为主'}
-
-语言风格:
-- 使用 {p.language_style} 交流
-- {'适当使用 emoji' if p.use_emoji else '保持专业'}
-- {'可以使用 Markdown' if p.use_markdown else '使用纯文本'}
-"""
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, _ = loader.load(
+                "layers.capabilities.personality.engine",
+                name=p.name, role=p.role, tone=p.tone,
+                formality=p.formality, empathy=p.empathy,
+                values="\n".join(f"- {v}" for v in p.values),
+                proactivity_text=proactivity_text,
+                challenge_text=challenge_text,
+                advice_text=advice_text,
+                language_style=p.language_style,
+                emoji_text=emoji_text,
+                markdown_text=markdown_text,
+            )
+            return system or ""
+        except Exception:
+            return (
+                f"你是 {p.name}，用户的个人 AI {p.role}。\n"
+                f"\n"
+                f"沟通风格: {p.tone}\n"
+                f"正式程度: {p.formality}\n"
+                f"共情水平: {p.empathy}\n"
+                f"\n"
+                f"价值观:\n"
+                f"{chr(10).join(f'- {v}' for v in p.values)}\n"
+                f"\n"
+                f"行为准则:\n"
+                f"- {proactivity_text}\n"
+                f"- {challenge_text}\n"
+                f"- {advice_text}\n"
+                f"\n"
+                f"语言风格:\n"
+                f"- 使用 {p.language_style} 交流\n"
+                f"- {emoji_text}\n"
+                f"- {markdown_text}\n"
+            )

@@ -57,15 +57,21 @@ class MorningBriefAgent:
             max_tokens=500,
         )
 
-        system_prompt = (
-            "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份简洁温暖的晨间简报，"
-            "包含：1）今日世界热点摘要（如有），2）对用户近期状态的简短观察，3）一句鼓励的话。"
-            "简报应简短，内容应尽可能详尽，不需要控制字数。"
-        )
+        try:
+            from huaqi_src.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
+            system, user = loader.load("layers.capabilities.reports.morning", context=context)
+        except Exception:
+            system = (
+                "你是 huaqi，用户的 AI 同伴。请根据以下背景信息，生成一份简洁温暖的晨间简报，"
+                "包含：1）今日世界热点摘要（如有），2）对用户近期状态的简短观察，3）一句鼓励的话。"
+                "简报应简短，内容应尽可能详尽，不需要控制字数。"
+            )
+            user = f"背景信息：\n{context}"
 
         response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"背景信息：\n{context}"),
+            SystemMessage(content=system),
+            HumanMessage(content=user or f"背景信息：\n{context}"),
         ])
         return response.content
 

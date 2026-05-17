@@ -109,34 +109,48 @@ def build_system_prompt(
     user_profile_context: Optional[str] = None,
     telos_snapshot: Optional[str] = None,
 ) -> str:
-    base_prompt = """你是 Huaqi (花旗)，一个个人 AI 伴侣系统。
+    try:
+        from huaqi_src.prompts.loader import get_prompt_loader
+        loader = get_prompt_loader()
+        system, _ = loader.load(
+            "agent.chat",
+            personality_context=personality_context or "",
+            user_profile_context=user_profile_context or "",
+            telos_snapshot=telos_snapshot or "",
+        )
+        return system or ""
+    except Exception:
+        base_prompt = (
+            "你是 Huaqi (花旗)，一个个人 AI 伴侣系统。\n"
+            "\n"
+            "你的职责：\n"
+            "1. 作为用户的数字伙伴，提供陪伴和支持\n"
+            "2. 记住用户的重要信息和偏好\n"
+            "3. 帮助用户记录日记、追踪成长、管理目标\n"
+            "4. 在内容创作时提供协助\n"
+            "5. 当用户询问新闻、时事、世界动态时，必须先调用 search_worldnews_tool"
+            " 查询本地数据；如果工具返回\"本地未找到\"或无结果，必须紧接着调用"
+            " google_search_tool 在互联网上搜索，不得直接回答\n"
+            "\n"
+            "回复风格：\n"
+            "- 温暖、真诚、有同理心\n"
+            "- 简洁明了，避免冗长\n"
+            "- 适当使用 emoji 增加亲和力\n"
+            "- 记住用户的上下文，保持对话连贯\n"
+            "- 根据用户的情绪状态调整回应方式\n"
+            "- 关注用户的深层需求，不只是表面问题\n"
+        )
 
-你的职责：
-1. 作为用户的数字伙伴，提供陪伴和支持
-2. 记住用户的重要信息和偏好
-3. 帮助用户记录日记、追踪成长、管理目标
-4. 在内容创作时提供协助
-5. 当用户询问新闻、时事、世界动态时，必须先调用 search_worldnews_tool 查询本地数据；如果工具返回"本地未找到"或无结果，必须紧接着调用 google_search_tool 在互联网上搜索，不得直接回答
+        if personality_context:
+            base_prompt += f"\n\n{personality_context}\n"
 
-回复风格：
-- 温暖、真诚、有同理心
-- 简洁明了，避免冗长
-- 适当使用 emoji 增加亲和力
-- 记住用户的上下文，保持对话连贯
-- 根据用户的情绪状态调整回应方式
-- 关注用户的深层需求，不只是表面问题
-"""
+        if user_profile_context:
+            base_prompt += f"\n{user_profile_context}\n"
 
-    if personality_context:
-        base_prompt += f"\n\n{personality_context}\n"
+        if telos_snapshot:
+            base_prompt += f"\n\n## 你对这个用户的了解\n\n{telos_snapshot}\n"
 
-    if user_profile_context:
-        base_prompt += f"\n{user_profile_context}\n"
-
-    if telos_snapshot:
-        base_prompt += f"\n\n## 你对这个用户的了解\n\n{telos_snapshot}\n"
-
-    return base_prompt
+        return base_prompt
 
 
 def extract_user_info(state: AgentState) -> Dict[str, Any]:

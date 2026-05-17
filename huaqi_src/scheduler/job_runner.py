@@ -57,16 +57,6 @@ def _run_scheduled_job(
             raise
 
 
-_LEARNING_PUSH_SYSTEM_PROMPT = """你是 huaqi，用户的学习同伴。请根据用户当前的学习进度，从进行中的课程中选取一个知识点，出1-2道复习题。格式要求：
-
-1. 简要说明所选课程和知识点
-2. 出1-2道题目（选择题或简答题均可）
-3. 给出答案解析
-4. 最后附上一句鼓励的话
-
-语气温暖有洞察力，内容要具体，不要泛泛而谈。"""
-
-
 def _build_learning_context() -> str:
     """为学习推送构建学习进度上下文。"""
     try:
@@ -128,15 +118,33 @@ def _call_llm_for_job(job_id: str, prompt: str) -> str:
         max_tokens=800,
     )
 
-    if job_id == "learning_daily_push":
-        system_prompt = _LEARNING_PUSH_SYSTEM_PROMPT
-        _log("构建学习上下文...")
-        context = _build_learning_context()
-        _log(f"学习上下文长度: {len(context)}")
-        user_message = f"{prompt}\n\n{context}"
-    else:
-        system_prompt = f"你是 huaqi，用户的 AI 同伴。请执行以下定时任务：「{job_id}」。"
-        user_message = prompt
+    # 使用 PromptLoader 加载 system prompt（支持热更新）
+    try:
+        from huaqi_src.prompts.loader import get_prompt_loader
+        loader = get_prompt_loader()
+        if job_id == "learning_daily_push":
+            context = _build_learning_context()
+            system_prompt, user_prompt = loader.load(
+                "scheduler.job_runner.learning", context=context
+            )
+            user_message = user_prompt or f"{prompt}\n\n{context}"
+        else:
+            system_prompt, _ = loader.load(
+                "scheduler.job_runner", job_id=job_id, context=prompt
+            )
+            user_message = prompt
+    except Exception:
+        # PromptLoader 不可用时回退到简单默认值
+        if job_id == "learning_daily_push":
+            system_prompt = "你是 huaqi，用户的学习同伴。"
+            context = _build_learning_context()
+            user_message = f"{prompt}\n\n{context}"
+        else:
+            system_prompt = (
+                f"你是 huaqi，用户的 AI 同伴。"
+                f"请执行以下定时任务：「{job_id}」。"
+            )
+            user_message = prompt
 
     _log("调用 LLM invoke...")
     response = llm.invoke([
