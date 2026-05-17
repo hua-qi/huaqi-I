@@ -28,11 +28,13 @@ class ScheduledJob(BaseModel):
         return v
 
 
-def _get_default_output_dir(subdir: str) -> str:
+def _get_default_output_dir(subdir: str, parent: str = "reports") -> str:
     from huaqi_src.config.paths import get_data_dir
     data_dir = get_data_dir()
     if data_dir is not None:
-        return str(data_dir / "reports" / subdir)
+        if parent:
+            return str(data_dir / parent / subdir)
+        return str(data_dir / subdir)
     return ""
 
 
@@ -76,7 +78,7 @@ def _build_default_jobs() -> List[dict]:
             "cron": "0 21 * * *",
             "enabled": True,
             "prompt": "请推送今日学习内容，从进行中的课程中选取一个知识点出题复习。",
-            "output_dir": _get_default_output_dir("learning"),
+            "output_dir": _get_default_output_dir("learning", parent=""),
         },
         {
             "id": "world_fetch",
