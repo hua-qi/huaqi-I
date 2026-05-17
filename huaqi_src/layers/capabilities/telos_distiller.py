@@ -61,6 +61,15 @@ def _get_pipeline():
     )
 
 
+def _ensure_telos_dir() -> None:
+    """确保 TELOS 维度文件和目录存在（幂等）。"""
+    from huaqi_src.config.paths import get_telos_dir
+    from huaqi_src.layers.growth.telos.manager import TelosManager
+    telos_dir = get_telos_dir()
+    mgr = TelosManager(telos_dir=telos_dir, git_commit=False)
+    mgr.init()
+
+
 async def _run_async(limit: int, user_id: str) -> Dict[str, Any]:
     from huaqi_src.layers.data.raw_signal.models import RawSignalFilter
 
@@ -68,6 +77,7 @@ async def _run_async(limit: int, user_id: str) -> Dict[str, Any]:
     unprocessed = store.query(
         RawSignalFilter(user_id=user_id, processed=0, limit=limit)
     )
+    _ensure_telos_dir()
     if not unprocessed:
         return {"processed": 0, "errors": 0}
 
