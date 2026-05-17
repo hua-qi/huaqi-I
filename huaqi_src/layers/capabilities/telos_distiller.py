@@ -35,6 +35,7 @@ def _get_pipeline():
 
     telos_dir = get_telos_dir()
     telos_mgr = TelosManager(telos_dir=telos_dir, git_commit=not os.environ.get("CI"))
+    telos_mgr.init()
 
     from huaqi_src.cli.context import build_llm_manager
     llm_mgr = build_llm_manager(temperature=0.3, max_tokens=2000)
