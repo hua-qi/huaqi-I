@@ -78,7 +78,8 @@ class QuarterlyReportAgent:
         report = self._generate_report()
         report_dir = self.data_dir / "reports" / "quarterly"
         report_dir.mkdir(parents=True, exist_ok=True)
-        year, quarter = self._current_quarter()
-        report_file = report_dir / f"{year}-Q{quarter}.md"
-        report_file.write_text(f"# 季报 {year}-Q{quarter}\n\n{report}\n", encoding="utf-8")
+        today = datetime.date.today()
+        date_str = today.isoformat()
+        report_file = report_dir / f"{date_str}-quarterly.md"
+        report_file.write_text(f"# 季报 {today.year}-Q{self._current_quarter()[1]}\n\n{report}\n", encoding="utf-8")
         return report

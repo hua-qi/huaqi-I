@@ -37,5 +37,5 @@ def test_weekly_report_iso_week_in_filename(tmp_path):
     files = list(report_dir.glob("*.md"))
     assert len(files) == 1
     today = datetime.date.today()
-    expected_week = f"{today.isocalendar()[0]}-W{today.isocalendar()[1]:02d}"
-    assert expected_week in files[0].name
+    expected = f"{today.isoformat()}-weekly"
+    assert expected in files[0].name

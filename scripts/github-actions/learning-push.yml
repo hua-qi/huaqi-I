@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          repository: YOUR_USERNAME/huaqi-growing
+          repository: lianzimeng05/huaqi-growing
           path: huaqi-src
 
       - uses: actions/setup-python@v5

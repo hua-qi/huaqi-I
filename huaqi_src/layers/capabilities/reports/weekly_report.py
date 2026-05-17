@@ -76,8 +76,7 @@ class WeeklyReportAgent:
         report_dir = self._data_dir / "reports" / "weekly"
         report_dir.mkdir(parents=True, exist_ok=True)
         today = datetime.date.today()
-        iso = today.isocalendar()
-        week_str = f"{iso[0]}-W{iso[1]:02d}"
-        report_file = report_dir / f"{week_str}.md"
-        report_file.write_text(f"# 周报 {week_str}\n\n{report}\n", encoding="utf-8")
+        date_str = today.isoformat()
+        report_file = report_dir / f"{date_str}-weekly.md"
+        report_file.write_text(f"# 周报 {date_str}\n\n{report}\n", encoding="utf-8")
         return report

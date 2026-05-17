@@ -24,8 +24,7 @@ def test_quarterly_report_filename_format(tmp_path):
     files = list(report_dir.glob("*.md"))
     assert len(files) == 1
     today = datetime.date.today()
-    quarter = (today.month - 1) // 3 + 1
-    expected = f"{today.year}-Q{quarter}"
+    expected = f"{today.isoformat()}-quarterly"
     assert expected in files[0].name
 
 
