@@ -232,3 +232,12 @@ def ensure_dirs():
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
+
+    # 初始化 prompts/ 目录（首次创建，后续增量更新）
+    try:
+        from huaqi_src.prompts.initializer import PromptInitializer
+        data_dir = get_data_dir()
+        if data_dir is not None:
+            PromptInitializer(data_dir / "prompts").ensure()
+    except Exception:
+        pass

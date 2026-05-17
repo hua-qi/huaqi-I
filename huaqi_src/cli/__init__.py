@@ -131,7 +131,8 @@ def main(
         _wizard_set_data_dir(_ctx)
 
     _ctx.DATA_DIR = get_data_dir()
-    from huaqi_src.config.paths import get_memory_dir
+    from huaqi_src.config.paths import get_memory_dir, ensure_dirs
+    ensure_dirs()
     _ctx.MEMORY_DIR = get_memory_dir() if is_data_dir_set() else None
 
     if ctx.invoked_subcommand is None:
