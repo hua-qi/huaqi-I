@@ -8,9 +8,11 @@ console = __import__("rich.console", fromlist=["Console"]).Console()
 @scheduler_app.command("run")
 def run_cmd(job_id: str):
     """Headless 执行指定定时任务（供 GitHub Actions 调用）"""
+    from huaqi_src.cli.context import ensure_initialized
     from huaqi_src.config.paths import require_data_dir
     from huaqi_src.scheduler.scheduled_job_store import ScheduledJobStore
 
+    ensure_initialized()
     store = ScheduledJobStore(require_data_dir())
     job = store.get_job(job_id)
     if job is None:
