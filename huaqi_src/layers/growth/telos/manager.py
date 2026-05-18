@@ -113,6 +113,7 @@ class TelosManager:
                     result.append(dim)
             except Exception:
                 pass
+        result.sort(key=lambda d: d.name)
         return result
 
     def _git_auto_commit(self, message: str) -> None:
@@ -241,4 +242,8 @@ class TelosManager:
 
         lines += ["", "## 特殊", "- [meta.md](meta.md)", ""]
 
-        (self._dir / "INDEX.md").write_text("\n".join(lines), encoding="utf-8")
+        new_content = "\n".join(lines)
+        index_path = self._dir / "INDEX.md"
+        old_content = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+        if new_content != old_content:
+            index_path.write_text(new_content, encoding="utf-8")
