@@ -2100,6 +2100,68 @@ class TestPromptsOverhaul:
             assert system is not None, f"scene={scene} 加载失败"
 
 
+class TestTelosPromptQuality:
+    """TELOS 蒸馏质量功能验收。
+
+    Spec: docs/iterations/2026-05-18-telos-quality/spec.md
+    """
+
+    def test_step1_prompt_has_core_layer_triggers(self, data_dir, set_data_dir):
+        """AC-1/3: step1 prompt 包含核心层扩展触发条件和积累初始化规则。"""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step1",
+            telos_index="", active_dimensions="",
+            source_type="AI_CHAT", timestamp="2026-01-01", content="test",
+        )
+        assert "隐含" in prompt or "因果" in prompt
+        assert "积累" in prompt or "多次" in prompt
+
+    def test_step1_prompt_has_dimension_limit(self, data_dir, set_data_dir):
+        """AC-4: step1 prompt 包含维度数量限制。"""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step1",
+            telos_index="", active_dimensions="",
+            source_type="AI_CHAT", timestamp="2026-01-01", content="test",
+        )
+        assert "最多" in prompt and ("2 个" in prompt or "两个" in prompt)
+
+    def test_step345_prompt_has_word_limit(self, data_dir, set_data_dir):
+        """AC-7: step345 prompt 包含字数上限。"""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
+            telos_index="", days=7, dimension="learned",
+            layer="surface", count=3,
+            signal_summaries="- test\n", current_content="test",
+        )
+        assert "300" in prompt and "字" in prompt
+
+    def test_step345_prompt_bans_abstract_words(self, data_dir, set_data_dir):
+        """AC-8: step345 prompt 禁止高频抽象词。"""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
+            telos_index="", days=7, dimension="learned",
+            layer="surface", count=3,
+            signal_summaries="- test\n", current_content="test",
+        )
+        for word in ["元认知", "跃迁", "校准", "共建"]:
+            assert word in prompt, f"禁词规则必须提及'{word}'"
+
+    def test_step345_prompt_has_association_check(self, data_dir, set_data_dir):
+        """AC-5: step345 prompt 包含关联点验证。"""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
+            telos_index="", days=7, dimension="learned",
+            layer="surface", count=3,
+            signal_summaries="- test\n", current_content="test",
+        )
+        assert "关联" in prompt
+
+
 # ============================================================================
 # 运行入口
 # ============================================================================

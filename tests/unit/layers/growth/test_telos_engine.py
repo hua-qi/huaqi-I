@@ -507,3 +507,93 @@ class TestReviewStaleDimension:
 
         dim = telos_manager.get("beliefs")
         assert dim.confidence < 0.5
+
+
+class TestStep1PromptQuality:
+    """AC-1~4: step1 prompt 质量约束。
+
+    Spec: docs/iterations/2026-05-18-telos-quality/spec.md
+    """
+
+    def test_step1_prompt_includes_implicit_belief_trigger(self, telos_manager):
+        """AC-1: 核心层触发条件包含隐含信念/行为选择/是非判断."""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step1",
+            telos_index="", active_dimensions="",
+            source_type="AI_CHAT", timestamp="2026-01-01", content="test",
+        )
+        assert "行为" in prompt or "隐含" in prompt or "决策" in prompt
+        assert "是非" in prompt or "对错" in prompt or "判断" in prompt
+
+    def test_step1_prompt_includes_dimension_limit(self, telos_manager):
+        """AC-4: 每条信号最多匹配 2 个维度."""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step1",
+            telos_index="", active_dimensions="",
+            source_type="AI_CHAT", timestamp="2026-01-01", content="test",
+        )
+        assert "2 个维度" in prompt or "两个维度" in prompt or "最多" in prompt
+
+    def test_step1_prompt_includes_core_init_accumulation(self, telos_manager):
+        """AC-2: medium 信号积累可触发核心层初始化."""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step1",
+            telos_index="", active_dimensions="",
+            source_type="AI_CHAT", timestamp="2026-01-01", content="test",
+        )
+        assert "积累" in prompt or "多次" in prompt or "首次" in prompt
+
+
+class TestStep345PromptQuality:
+    """AC-5~9: step345 prompt 质量约束。
+
+    Spec: docs/iterations/2026-05-18-telos-quality/spec.md
+    """
+
+    def test_step345_prompt_includes_word_limit(self, telos_manager):
+        """AC-7: new_content 字数上限 ≤300."""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
+            telos_index="", days=7, dimension="learned",
+            layer="surface", count=3,
+            signal_summaries="- test\n", current_content="test",
+        )
+        assert "300 字" in prompt or "300字" in prompt or ("300" in prompt and "字" in prompt)
+
+    def test_step345_prompt_bans_abstract_words(self, telos_manager):
+        """AC-8: 禁止「元认知」「跃迁」「校准」「共建」「范式」「涌现」."""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
+            telos_index="", days=7, dimension="learned",
+            layer="surface", count=3,
+            signal_summaries="- test\n", current_content="test",
+        )
+        for word in ["元认知", "跃迁", "校准", "共建", "范式", "涌现"]:
+            assert word in prompt, f"禁词规则必须提及 '{word}'"
+
+    def test_step345_prompt_includes_signal_reference(self, telos_manager):
+        """AC-7: 要求引用至少一条具体信号内容."""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
+            telos_index="", days=7, dimension="learned",
+            layer="surface", count=3,
+            signal_summaries="- test\n", current_content="test",
+        )
+        assert "具体信号" in prompt or "引用" in prompt or "信号内容" in prompt
+
+    def test_step345_prompt_includes_association_check(self, telos_manager):
+        """AC-5: 关联点验证——更新前须指定信号与维度的具体关联."""
+        from huaqi_src.layers.growth.telos.engine import _load_telos_prompt
+        prompt = _load_telos_prompt(
+            "layers.growth.telos.engine.step345",
+            telos_index="", days=7, dimension="learned",
+            layer="surface", count=3,
+            signal_summaries="- test\n", current_content="test",
+        )
+        assert "关联" in prompt

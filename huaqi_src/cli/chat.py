@@ -934,6 +934,23 @@ def chat_mode():
             if len(conversation_history) > 11:
                 conversation_history = conversation_history[-10:]
 
+            # 保存 RawSignal 供 TELOS 蒸馏使用
+            try:
+                from huaqi_src.agent.hooks import save_conversation_to_signal
+                from huaqi_src.config.paths import require_data_dir
+                from huaqi_src.config.adapters.storage import SQLiteStorageAdapter
+                from huaqi_src.layers.data.raw_signal.store import RawSignalStore
+                data_dir = require_data_dir()
+                signal_store = RawSignalStore(adapter=SQLiteStorageAdapter(db_path=data_dir / "raw_signals.db"))
+                save_conversation_to_signal(
+                    user_id="default",
+                    user_message=user_input,
+                    assistant_message=response_text,
+                    signal_store=signal_store,
+                )
+            except Exception:
+                pass
+
         except KeyboardInterrupt:
             console.print("\n\n[dim]已中断对话[/dim]\n")
             break

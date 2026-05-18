@@ -88,8 +88,12 @@ class TelosDimension(BaseModel):
         ]
 
         if self.history:
+            MAX_HISTORY = 30
             lines += ["", "---", "", "## 更新历史", ""]
-            for entry in reversed(self.history):
+            recent = self.history[-MAX_HISTORY:]
+            if len(self.history) > MAX_HISTORY:
+                lines += [f"> 仅显示最近 {MAX_HISTORY} 条（共 {len(self.history)} 条完整记录）", ""]
+            for entry in reversed(recent):
                 lines += [
                     f"### v{entry.version} · {entry.updated_at.strftime('%Y-%m-%d')}",
                     f"**变化**：{entry.change}",

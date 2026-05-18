@@ -361,8 +361,18 @@ async def generate_response(state: AgentState, config: Optional[RunnableConfig] 
         }
 
 
+def _get_signal_store():
+    """延迟初始化 RawSignalStore，避免模块导入时触发 DB 初始化。"""
+    from huaqi_src.config.paths import require_data_dir
+    from huaqi_src.config.adapters.storage import SQLiteStorageAdapter
+    from huaqi_src.layers.data.raw_signal.store import RawSignalStore
+
+    data_dir = require_data_dir()
+    return RawSignalStore(adapter=SQLiteStorageAdapter(db_path=data_dir / "raw_signals.db"))
+
+
 def save_conversation(state: AgentState) -> Dict[str, Any]:
-    """保存对话节点：Markdown 存档 + Chroma 向量索引"""
+    """保存对话节点：Markdown 存档 + Chroma 向量索引 + RawSignal"""
     messages = state.get("messages", [])
     response = state.get("response", "")
 
@@ -398,6 +408,22 @@ def save_conversation(state: AgentState) -> Dict[str, Any]:
         )
 
         _index_to_chroma(session_id, turns, now)
+
+        # 保存 RawSignal 供 TELOS 蒸馏使用
+        try:
+            from huaqi_src.agent.hooks import save_conversation_to_signal
+            signal_store = _get_signal_store()
+            user_id = state.get("user_id", "default")
+            for turn in turns:
+                save_conversation_to_signal(
+                    user_id=user_id,
+                    user_message=turn["user_message"],
+                    assistant_message=turn["assistant_response"],
+                    signal_store=signal_store,
+                    occurred_at=now,
+                )
+        except Exception:
+            pass
 
     except Exception:
         pass

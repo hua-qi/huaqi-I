@@ -190,25 +190,49 @@ _BUILTIN_DEFAULTS: dict[str, str] = {
         "以下是当前对这个用户的了解（TELOS 索引）：\n"
         "{telos_index}\n"
         "\n"
-        "当前活跃维度：{active_dimensions}\n"
+        "当前活跃维度及其含义：\n"
+        "\n"
+        "| 维度 | 层级 | 关注什么 | 什么时候触发 |\n"
+        "|------|------|---------|------------|\n"
+        "| beliefs | 核心 | 价值观、是非判断、人生信条 | 用户表达了明确的价值判断，或行为选择中隐含了信念假设（如「还是用开源方案吧」暗示对开源的偏好），或对某事做出了对/错、好/坏的评判 |\n"
+        "| models | 核心 | 心智模型、世界观、因果关系理解 | 用户用某种因果逻辑解释事情（如「因为A所以B」「这类事一般都这样」），或显露出对某个领域运作规律的理解框架 |\n"
+        "| narratives | 核心 | 自我叙事、身份认同 | 用户在讲「我是谁」的故事 |\n"
+        "| challenges | 中间 | 当前困境、内心挣扎 | 用户在描述遇到的困难或矛盾 |\n"
+        "| goals | 中间 | 目标、愿望、追求 | 用户在说想要什么、想成为什么 |\n"
+        "| strategies | 中间 | 行为策略、应对方式 | 用户在展示如何处理问题 |\n"
+        "| learned | 表面 | 日常发现、技能、知识 | 用户学到了新东西或分享了具体经验 |\n"
+        "| shadows | 表面 | 回避、恐惧、未表达的阴暗面 | 用户流露出逃避、否认或未说出口的情绪 |\n"
+        "\n"
+        "信号强度判断标准：\n"
+        "- **strong**：用户明确表达了关于自己的新认知、新决定或重大事件，触发维度认知更新\n"
+        "- **medium**：用户的表达暗示了某种行为模式、偏好或倾向，但并未明确陈述\n"
+        "- **weak**：闲聊、问候、纯信息查询，不含有自我揭示内容\n"
+        "\n"
+        "重要规则：\n"
+        "- 如果信号属于纯闲聊或纯信息查询（无自我揭示），返回 dimensions 为空数组 []，signal_strength 为 \"weak\"\n"
+        "- 不要强行归类——没有相关维度就是没有\n"
+        "- **维度数量限制**：每条信号最多匹配 2 个维度。选择关联最强的维度，宁可少匹配合适的，不要多匹配牵强的。如果最匹配的维度已满 2 个，其余可通过 new_dimension_hint 提示\n"
+        "- **核心层积累初始化**：beliefs 和 models 是变化最慢的核心维度，可能长时间没有 strong 信号。如果某个核心维度在多条信号中被 medium 触发（累计 ≥3 次），即使没有 strong 信号，也可对该维度进行首次认知初始化——因为隐含的重复模式本身就构成了证据\n"
         "\n"
         "分析以下输入信号：\n"
         "来源：{source_type}\n"
         "时间：{timestamp}\n"
         "内容：{content}\n"
         "\n"
-        "请从以上活跃维度中判断本条信号涉及哪些维度。\n"
-        "如果信号内容不属于任何现有维度，请在 new_dimension_hint 字段说明。\n"
+        "请根据维度含义和信号强度标准判断本条信号涉及哪些维度。\n"
+        "如果信号内容不属于任何现有维度但有值得关注的新主题，请在 new_dimension_hint"
+        " 字段给出一个简短的维度名（2-8个汉字或4-20个英文字符，如 \"工作习惯\"、"
+        "\"健康关注\"），否则为 null。\n"
         "\n"
         "输出合法 JSON，不要有任何额外文字：\n"
         "{{\n"
-        '  "dimensions": ["..."],\n'
+        '  "dimensions": ["维度名1", "维度名2"],\n'
         '  "emotion": "positive|negative|neutral",\n'
         '  "intensity": 0.0-1.0,\n'
         '  "signal_strength": "strong|medium|weak",\n'
-        '  "strong_reason": "...",\n'
-        '  "summary": "...",\n'
-        '  "new_dimension_hint": null,\n'
+        '  "strong_reason": "如果 strong 则填写原因，否则 null",\n'
+        '  "summary": "一句话总结信号中与自我认知相关的部分，不超过80字",\n'
+        '  "new_dimension_hint": "简短维度名或null",\n'
         '  "has_people": true/false,\n'
         '  "mentioned_names": ["姓名1", "姓名2"]\n'
         "}}"
@@ -309,42 +333,75 @@ _BUILTIN_DEFAULTS: dict[str, str] = {
     ),
     "layers.growth.telos.engine.step345": (
         "<!-- scene: layers.growth.telos.engine.step345"
-        " | variables: telos_index, days, dimension, count,"
+        " | variables: telos_index, days, dimension, layer, count,"
         " signal_summaries, current_content -->\n"
         "你是用户的个人成长分析师兼见证者。\n"
-        "请同时完成三件事：\n"
-        "1. 判断是否应更新「{dimension}」维度的认知\n"
-        "2. 如果更新，生成新的认知内容和历史记录\n"
-        "3. 判断这次变化是否是值得记录的成长事件\n"
+        "请按顺序完成以下三件事：\n"
         "\n"
-        "以下是当前对这个用户的了解：\n"
-        "{telos_index}\n"
+        "## 任务 1：判断是否需要更新\n"
         "\n"
-        "以下是最近 {days} 天，关于「{dimension}」维度的 {count} 条信号摘要：\n"
+        "维度：{dimension}（{layer}层）\n"
+        "最近 {days} 天内的 {count} 条相关信号：\n"
         "{signal_summaries}\n"
         "\n"
-        "当前该维度的认知是：\n"
+        "当前认知：\n"
         "{current_content}\n"
         "\n"
-        "判断标准（成长事件）：\n"
-        "- 核心层维度变化 → 几乎总是值得\n"
-        "- 中间层维度的方向性转变 → 值得\n"
-        "- 表面层的日常积累 → 通常不值得\n"
+        "更新判断标准：\n"
+        "- 核心层（core）：仅在有明确的新证据或自我认知转变时更新。变化慢，宁缺毋滥。\n"
+        "- 中间层（middle）：在信号积累到出现了新的模式、转向或深化时更新。变化中速。\n"
+        "- 表面层（surface）：在有明显的行为变化或新发现时更新。变化较快。\n"
+        "- **防退化规则**：如果新信号与当前认知高度一致，且没有提供新的角度或深度，"
+        "则 should_update 设为 false。不要为了更新而更新。\n"
+        "- **关联点验证**：在决定 should_update=true 之前，必须能在信号摘要中指定至少一条"
+        "与当前维度有具体关联的信号。在 reason 中写明「信号『…』与该维度关联，因为…」。"
+        "如果无法指定任何具体信号，说明这批信号与该维度无关，应设 should_update=false。\n"
         "\n"
-        "consistency_score 的含义：这些信号指向同一个方向的程度（0.0=完全矛盾，1.0=高度一致）\n"
+        "方向性转变的示例（中间层）：\n"
+        "- 从「被动应对困难」转为「主动寻求挑战」\n"
+        "- 从「关注技术学习」转为「关注团队协作」\n"
+        "- 从「模糊的自我探索」转为「系统化的自我认知构建」\n"
         "\n"
-        "输出合法 JSON，不要有任何额外文字：\n"
+        "## 任务 2：如果更新，生成新认知\n"
+        "\n"
+        "- new_content：综合当前认知和新信号，生成更新后的维度认知描述。"
+        "要求：① 不超过 300 字；② 保持自然的叙事风格，写给用户自己看，不要分析腔；"
+        "③ **必须引用至少一条具体信号内容**（如「你说『跟你多聊聊天』的时候…」），"
+        "不能只写抽象概括；④ **禁止使用以下术语**：元认知、跃迁、校准、共建、范式、涌现"
+        "——用日常口语表达相同的含义（如不说「完成了元认知跃迁」，"
+        "说「你开始思考自己是怎么思考的了」）\n"
+        "- consistency_score：这些信号与当前认知的一致性（0.0=完全矛盾，1.0=高度一致）\n"
+        "- history_entry：简短的 change + trigger 记录\n"
+        "\n"
+        "## 任务 3：判断是否构成成长事件\n"
+        "\n"
+        "- 核心层维度变化 → 几乎总是成长事件\n"
+        "- 中间层维度的方向性转变（见上例） → 是成长事件\n"
+        "- 表面层的日常积累 → 通常不是成长事件，除非出现了明显的模式突破\n"
+        "\n"
+        "以下是当前对这个用户的整体了解（供参考）：\n"
+        "{telos_index}\n"
+        "\n"
+        "输出合法 JSON。如果 should_update=false，growth_title 和 growth_narrative 可为空字符串：\n"
         "{{\n"
-        '  "should_update": true/false,\n'
-        '  "new_content": "...",\n'
-        '  "consistency_score": 0.0-1.0,\n'
-        '  "history_entry": {{\n'
-        '    "change": "...",\n'
-        '    "trigger": "..."\n'
-        "  }},\n"
-        '  "is_growth_event": true/false,\n'
-        '  "growth_title": "...",\n'
-        '  "growth_narrative": "..."\n'
+        '  "should_update": true,\n'
+        '  "new_content": "更新后的完整认知描述...",\n'
+        '  "consistency_score": 0.85,\n'
+        '  "history_entry": {{ "change": "一句话描述变化", "trigger": "触发信号的一行摘要" }},\n'
+        '  "is_growth_event": true,\n'
+        '  "growth_title": "一句话标题",\n'
+        '  "growth_narrative": "温暖的见证叙述"\n'
+        "}}\n"
+        "\n"
+        "不更新时的输出示例：\n"
+        "{{\n"
+        '  "should_update": false,\n'
+        '  "new_content": "",\n'
+        '  "consistency_score": 0.95,\n'
+        '  "history_entry": {{ "change": "", "trigger": "" }},\n'
+        '  "is_growth_event": false,\n'
+        '  "growth_title": "",\n'
+        '  "growth_narrative": ""\n'
         "}}"
     ),
 

@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -118,6 +119,13 @@ def _parse_json(text: str) -> dict:
     return json.loads(text)
 
 
+def _skip_duplicate_update(old_content: str, new_content: str) -> bool:
+    """True if new content is nearly identical to current, meaning update should be skipped."""
+    if not new_content or not new_content.strip():
+        return True
+    return SequenceMatcher(None, old_content.strip(), new_content.strip()).ratio() > 0.95
+
+
 class TelosEngine:
 
     def __init__(self, telos_manager: TelosManager, llm: Any) -> None:
@@ -184,6 +192,9 @@ class TelosEngine:
         response = self._llm.invoke(prompt)
         data = _parse_json(response.content)
         result = Step4Output(**data)
+
+        if _skip_duplicate_update(dim.content, result.new_content):
+            return result
 
         version = dim.update_count + 1
         entry = HistoryEntry(
@@ -272,6 +283,7 @@ class TelosEngine:
             telos_index=self._telos_index(),
             days=days,
             dimension=dimension,
+            layer=dim.layer.value,
             count=len(signal_summaries),
             signal_summaries="\n".join(f"- {s}" for s in signal_summaries),
             current_content=dim.content,
@@ -279,6 +291,10 @@ class TelosEngine:
         response = await self._llm.ainvoke(prompt)
         data = _parse_json(response.content)
         result = CombinedStepOutput(**data)
+
+        if _skip_duplicate_update(dim.content, result.new_content or ""):
+            result.should_update = False
+            return result
 
         count_score = min(recent_signal_count / 10, 1.0)
         consistency_score = result.consistency_score

@@ -38,17 +38,20 @@ class DistillationPipeline:
         self._signal_store.mark_processed(signal.id)
 
         if step1_result.new_dimension_hint:
-            hint = step1_result.new_dimension_hint
-            try:
-                self._mgr.get(hint)
-            except DimensionNotFoundError:
-                self._mgr.create_custom(
-                    name=hint,
-                    layer=DimensionLayer.SURFACE,
-                    initial_content="（待积累）",
-                )
-            if hint not in step1_result.dimensions:
-                step1_result.dimensions.append(hint)
+            hint = step1_result.new_dimension_hint.strip()
+            # 校验：维度名应该是短标识符（<=30字符，不含换行），
+            # 如果 LLM 返回了诊断文本而非维度名，跳过创建。
+            if len(hint) <= 30 and "\n" not in hint:
+                try:
+                    self._mgr.get(hint)
+                except DimensionNotFoundError:
+                    self._mgr.create_custom(
+                        name=hint,
+                        layer=DimensionLayer.SURFACE,
+                        initial_content="（待积累）",
+                    )
+                if hint not in step1_result.dimensions:
+                    step1_result.dimensions.append(hint)
 
         results: Dict[str, Any] = {
             "signal_id": signal.id,

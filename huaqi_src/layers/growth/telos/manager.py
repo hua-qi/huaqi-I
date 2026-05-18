@@ -2,6 +2,7 @@ import asyncio
 import shutil
 import subprocess
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, List, Optional
 
@@ -49,6 +50,11 @@ updated_at: {date}
 | 维度 | 操作 | 日期 | 原因 |
 |---|---|---|---|
 """
+
+
+def _content_is_duplicate(old: str, new: str) -> bool:
+    """Skip update if new content is nearly identical to current content."""
+    return SequenceMatcher(None, old.strip(), new.strip()).ratio() > 0.95
 
 
 class TelosManager:
