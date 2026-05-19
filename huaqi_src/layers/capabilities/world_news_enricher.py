@@ -141,18 +141,19 @@ class WorldNewsEnricher:
             raw_content=raw_content, user_context=user_section
         )
 
+        import sys
         try:
             response = self._llm.quick_chat(
                 prompt,
                 system="你是一位专业新闻编辑，擅长翻译和撰写中文新闻摘要。",
             )
         except Exception as e:
-            print(f"[WorldNewsEnricher] LLM 调用失败: {e}")
+            print(f"[WorldNewsEnricher] LLM 调用失败: {e}", file=sys.stderr)
             return False
 
         enriched = _extract_markdown(response)
         if not enriched:
-            print("[WorldNewsEnricher] LLM 返回内容为空")
+            print(f"[WorldNewsEnricher] LLM 返回内容为空（原始长度: {len(response)} 字符）", file=sys.stderr)
             return False
 
         file_path.write_text(enriched, encoding="utf-8")

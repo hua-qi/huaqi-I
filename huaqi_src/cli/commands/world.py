@@ -90,10 +90,15 @@ def fetch_cmd(
         else:
             typer.echo("[World] 正在翻译和扩展新闻内容...")
             user_context = _load_user_context()
-            if enricher.enrich_file(saved_path, user_context=user_context):
+            ok = enricher.enrich_file(saved_path, user_context=user_context)
+            if ok:
                 typer.echo("[World] 内容增强完成")
             else:
-                typer.echo("[World] 错误：内容增强失败，请检查 API Key 和网络连接", err=True)
+                typer.echo(
+                    "[World] 内容增强失败，保留原始 RSS 内容。"
+                    "查看上方 [WorldNewsEnricher] 日志了解失败原因。",
+                    err=True,
+                )
                 raise typer.Exit(1)
 
     typer.echo("采集完成")
