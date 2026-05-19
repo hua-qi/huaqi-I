@@ -85,14 +85,49 @@ def fetch_cmd(
 
     if not no_enrich:
         enricher = _build_enricher()
-        if enricher:
+        if enricher is None:
+            typer.echo("[World] 未配置 LLM（缺少 OPENAI_API_KEY 或初始化失败），跳过内容增强", err=True)
+        else:
             typer.echo("[World] 正在翻译和扩展新闻内容...")
             user_context = _load_user_context()
             if enricher.enrich_file(saved_path, user_context=user_context):
                 typer.echo("[World] 内容增强完成")
             else:
-                typer.echo("[World] 内容增强失败，保留原始内容")
-        else:
-            typer.echo("[World] 未配置 LLM，跳过内容增强")
+                typer.echo("[World] 错误：内容增强失败，请检查 API Key 和网络连接", err=True)
+                raise typer.Exit(1)
 
     typer.echo("采集完成")
+
+
+@world_app.command("enrich")
+def enrich_cmd(
+    date: str = typer.Option(..., "--date", help="要增强的日期 YYYY-MM-DD"),
+):
+    """对指定日期的世界新闻文件单独执行 LLM 增强（不重新采集）。"""
+    from pathlib import Path
+    from huaqi_src.config.paths import require_data_dir
+
+    try:
+        target_date = datetime.date.fromisoformat(date)
+    except ValueError:
+        typer.echo(f"日期格式错误: {date}，请使用 YYYY-MM-DD", err=True)
+        raise typer.Exit(1)
+
+    data_dir = require_data_dir()
+    file_path = Path(data_dir) / "world" / f"{target_date.isoformat()}.md"
+    if not file_path.exists():
+        typer.echo(f"文件不存在: {file_path}", err=True)
+        raise typer.Exit(1)
+
+    enricher = _build_enricher()
+    if enricher is None:
+        typer.echo("无法初始化 LLM 增强器（请确认 OPENAI_API_KEY 已设置）", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"[World] 正在增强 {file_path} ...")
+    user_context = _load_user_context()
+    if enricher.enrich_file(file_path, user_context=user_context):
+        typer.echo("[World] 内容增强完成")
+    else:
+        typer.echo("[World] 内容增强失败", err=True)
+        raise typer.Exit(1)
