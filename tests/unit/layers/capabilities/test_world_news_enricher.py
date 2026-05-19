@@ -5,24 +5,20 @@ from unittest.mock import MagicMock
 
 MOCK_ENRICHED_CONTENT = """# 世界感知摘要 2026-05-15
 
-## 重点关注建议
+## 领域粗筛结果
 
-### AI/科技
-- **OpenAI 发布新模型**：关注理由：与你目前的 AI 工程师工作直接相关，可能影响你的技术选型
+AI/科技 2 篇，宏观经济与政策 1 篇，行业动态 0 篇。用户画像指向 AI 工程师，与科技领域高度吻合。
 
-### 宏观经济
-- **美联储利率决议**：关注理由：影响全球资本市场
+## 今日精选（3 篇）
 
----
+### 精选 1：OpenAI 发布 GPT-5 模型
 
-## 新闻详情
-
-### 来源：BBC科技
-
-#### OpenAI Announces GPT-5
-**中文标题**：OpenAI 发布 GPT-5 模型
-
+**来源**：BBC科技
+**领域**：AI/科技
 **链接**：https://example.com/gpt5
+**英文原标题**：OpenAI Announces GPT-5
+
+**为什么选这篇**：与你目前的 AI 工程师工作直接相关，可能影响你的技术选型
 
 OpenAI 今日正式发布了 GPT-5 模型。该模型在推理能力、多模态理解等方面取得了显著突破。
 
@@ -30,14 +26,31 @@ OpenAI 今日正式发布了 GPT-5 模型。该模型在推理能力、多模态
 
 ---
 
-### 来源：36氪
+### 精选 2：国内某科技公司完成新一轮融资
 
-#### 国内某科技公司完成新一轮融资
+**来源**：36氪
+**领域**：AI/科技
 **链接**：https://example.com/funding
+
+**为什么选这篇**：AI 创业公司的融资动向，反映行业资本流向
 
 国内某科技公司近日完成了新一轮融资。该公司专注于企业级 AI 解决方案。
 
 融资后将加速产品研发和市场拓展。
+---
+
+### 精选 3：美联储维持利率不变
+
+**来源**：路透社国际
+**领域**：宏观经济与政策
+**链接**：https://example.com/fed
+**英文原标题**：Fed Holds Rates Steady
+
+**为什么选这篇**：利率政策影响科技行业融资环境和全球市场
+
+美联储今日宣布维持基准利率不变，符合市场预期。
+
+这一决定对科技行业融资环境有直接影响。
 """
 
 
@@ -50,10 +63,12 @@ class TestEnricherPrompt:
         assert "摘要" in _ENRICH_FALLBACK
 
     def test_prompt_requests_suggestions_section(self):
-        """AC-3: prompt 要求重点关注建议板块。"""
+        """AC-3: prompt 要求包含三领域粗筛和今日精选。"""
         from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_FALLBACK
-        assert "重点关注建议" in _ENRICH_FALLBACK
-        assert "分类" in _ENRICH_FALLBACK or "领域" in _ENRICH_FALLBACK
+        assert "今日精选" in _ENRICH_FALLBACK
+        assert "AI/科技" in _ENRICH_FALLBACK
+        assert "宏观经济与政策" in _ENRICH_FALLBACK
+        assert "行业动态" in _ENRICH_FALLBACK
 
     def test_prompt_requests_chinese_source_handling(self):
         """AC-5: prompt 要求中文源保留原文并扩展。"""
@@ -132,7 +147,7 @@ class TestEnricherFileOperations:
         result = enricher.enrich_file(temp_file)
         assert result is True
         new_content = temp_file.read_text(encoding="utf-8")
-        assert "重点关注建议" in new_content
+        assert "今日精选" in new_content
         assert "**链接**" in new_content
 
     def test_enrich_file_with_user_context(self, mock_llm, temp_file):

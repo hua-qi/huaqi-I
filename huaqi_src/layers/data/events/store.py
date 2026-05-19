@@ -14,8 +14,19 @@ class LocalDBStorage:
                 db_path = str(data_dir / "events.db")
             else:
                 db_path = "events.db"
-        self.conn = sqlite3.connect(db_path)
+        self._db_path = db_path
+        self.conn: "sqlite3.Connection | None" = None
+
+    def __enter__(self):
+        self.conn = sqlite3.connect(self._db_path)
         self._init_tables()
+        return self
+
+    def __exit__(self, *args):
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+        return False
 
     def _init_tables(self):
         cursor = self.conn.cursor()

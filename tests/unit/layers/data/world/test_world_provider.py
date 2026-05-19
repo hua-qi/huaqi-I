@@ -65,10 +65,39 @@ def test_world_provider_returns_none_when_lazy_fetch_raises(tmp_path):
 
 
 def test_prioritizes_suggestions_section(tmp_path):
-    """AC-4: 文件含「重点关注建议」时，提取该部分且不含新闻详情。"""
+    """提取「今日精选」板块的标题和选择理由，不含其他内容。"""
     content = (
         "# 世界感知摘要 2026-05-15\n\n"
         + ("x" * 2000) + "\n\n"
+        "## 领域粗筛结果\n\n"
+        "AI/科技 2 篇，其余 0 篇。\n\n"
+        "## 今日精选（3 篇）\n\n"
+        "### 精选 1：OpenAI 发布新模型\n\n"
+        "**来源**：BBC科技\n"
+        "**领域**：AI/科技\n"
+        "**链接**：https://example.com\n"
+        "**英文原标题**：OpenAI Announces New Model\n\n"
+        "**为什么选这篇**：与你目前的 AI 工程师工作直接相关\n\n"
+        "OpenAI 今日发布了新模型，性能大幅提升。\n\n"
+        "---\n\n"
+        "不应该出现的无关内容"
+    )
+    world_dir = tmp_path / "world"
+    world_dir.mkdir()
+    (world_dir / "2026-05-15.md").write_text(content, encoding="utf-8")
+
+    provider = WorldProvider(data_dir=tmp_path)
+    result = provider.get_context("morning", _make_date_range("2026-05-15"))
+    assert result is not None
+    assert "OpenAI" in result
+    assert "与你目前的 AI 工程师工作直接相关" in result
+    assert "不应该出现的无关内容" not in result
+
+
+def test_prioritizes_old_format_suggestions(tmp_path):
+    """兼容旧格式「重点关注建议」板块。"""
+    content = (
+        "# 世界感知摘要 2026-05-15\n\n"
         "## 重点关注建议\n\n"
         "### AI/科技\n"
         "- **OpenAI 发布新模型**：关注理由：与你目前的工作直接相关\n\n"
@@ -85,7 +114,6 @@ def test_prioritizes_suggestions_section(tmp_path):
     assert result is not None
     assert "重点关注建议" in result
     assert "与你目前的工作直接相关" in result
-    # 关键：不应该包含新闻详情内容
     assert "不应该出现这些新闻详情内容" not in result
 
 

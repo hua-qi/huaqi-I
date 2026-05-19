@@ -28,14 +28,13 @@ class EventsProvider(DataProvider):
         end_ts = int(dt.datetime.combine(date_range.end, dt.time.max).timestamp())
 
         try:
-            conn = sqlite3.connect(str(db_path))
-            rows = conn.execute(
-                "SELECT source, actor, content, timestamp FROM events "
-                "WHERE timestamp >= ? AND timestamp <= ? "
-                "ORDER BY timestamp DESC LIMIT 20",
-                (start_ts, end_ts),
-            ).fetchall()
-            conn.close()
+            with sqlite3.connect(str(db_path)) as conn:
+                rows = conn.execute(
+                    "SELECT source, actor, content, timestamp FROM events "
+                    "WHERE timestamp >= ? AND timestamp <= ? "
+                    "ORDER BY timestamp DESC LIMIT 20",
+                    (start_ts, end_ts),
+                ).fetchall()
         except Exception:
             return None
 

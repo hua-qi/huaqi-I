@@ -460,7 +460,8 @@ class TestEventStore:
     def store(self, tmp_path):
         from huaqi_src.layers.data.events.store import LocalDBStorage
 
-        return LocalDBStorage(db_path=str(tmp_path / "test_events.db"))
+        with LocalDBStorage(db_path=str(tmp_path / "test_events.db")) as db:
+            yield db
 
     def test_insert_and_get_recent(self, store):
         from huaqi_src.layers.data.events.models import Event

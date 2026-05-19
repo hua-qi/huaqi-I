@@ -760,15 +760,15 @@ def run_langgraph_chat(thread_id: str = None):
                     from huaqi_src.layers.data.events.store import LocalDBStorage
                     from huaqi_src.layers.data.events.models import Event
                     import time
-                    db = LocalDBStorage()
-                    db.insert_event(Event(
-                        timestamp=int(time.time()),
-                        source="cli",
-                        actor="User",
-                        content=user_input
-                    ))
-                    db.insert_event(Event(
-                        timestamp=int(time.time()),
+                    with LocalDBStorage() as db:
+                        db.insert_event(Event(
+                            timestamp=int(time.time()),
+                            source="cli",
+                            actor="User",
+                            content=user_input
+                        ))
+                        db.insert_event(Event(
+                            timestamp=int(time.time()),
                         source="cli",
                         actor="AI",
                         content=response_text

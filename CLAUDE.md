@@ -102,6 +102,7 @@ config/             # 统一配置管理（paths/manager/adapters）
 - **公开接口**：通过模块 `__init__.py` 导出，外部 `from huaqi_src.layers.growth.telos import TelosManager`，不穿透到内部文件
 - **文档**：公开类/函数必须有 docstring，说"做什么"不说"怎么做"
 - **版本后缀禁止**：文件名不允许出现 `_v2`、`_simple`、`_new`、`_old`
+- **Prompt 归属**：项目 prompt 写在用户数据目录（`{data_dir}/prompts/`）下，不在源码目录改。`huaqi_src/prompts/_defaults.py` 仅作 fallback，运行时优先加载数据目录文件。修改 prompt 时改数据目录文件，再同步更新 fallback
 
 ## 开发工作流：Spec → Plan → Test → Code
 

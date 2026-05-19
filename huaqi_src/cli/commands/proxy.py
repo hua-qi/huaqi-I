@@ -25,53 +25,53 @@ def proxy_run(ctx: typer.Context):
     from huaqi_src.layers.data.events.store import LocalDBStorage
     from huaqi_src.layers.data.events.models import Event
     
-    db = LocalDBStorage()
+    with LocalDBStorage() as db:
     
-    cmd_str = " ".join(command)
-    console.print(f"[dim]🚀 正在代理执行: {cmd_str}[/dim]")
+        cmd_str = " ".join(command)
+        console.print(f"[dim]🚀 正在代理执行: {cmd_str}[/dim]")
     
-    output_buffer = []
+        output_buffer = []
     
-    def read_interceptor(fd):
-        try:
-            data = os.read(fd, 1024)
-        except OSError:
-            return b""
-        output_buffer.append(data)
-        return data
+        def read_interceptor(fd):
+            try:
+                data = os.read(fd, 1024)
+            except OSError:
+                return b""
+            output_buffer.append(data)
+            return data
 
-    start_time = int(time.time())
+        start_time = int(time.time())
     
-    # 记录用户发起的命令
-    db.insert_event(Event(
-        timestamp=start_time,
-        source="cli_proxy",
-        actor="User",
-        content=cmd_str,
-        context_id=cmd_str
-    ))
-    
-    try:
-        # 使用 pty 衍生子进程并拦截
-        pty.spawn(command, read_interceptor)
-    except Exception as e:
-        console.print(f"\n[red]执行出错: {e}[/red]")
-        
-    # 执行结束后，提取并清理输出
-    full_output = b"".join(output_buffer).decode("utf-8", errors="ignore")
-    clean_output = strip_ansi(full_output).strip()
-    
-    if clean_output:
-        # 保存代理命令返回的内容
+        # 记录用户发起的命令
         db.insert_event(Event(
-            timestamp=int(time.time()),
+            timestamp=start_time,
             source="cli_proxy",
-            actor=command[0],
-            content=clean_output,
+            actor="User",
+            content=cmd_str,
             context_id=cmd_str
         ))
+    
+        try:
+            # 使用 pty 衍生子进程并拦截
+            pty.spawn(command, read_interceptor)
+        except Exception as e:
+            console.print(f"\n[red]执行出错: {e}[/red]")
         
-    console.print(f"\n[dim]✅ 交互已静默捕获并保存。[/dim]")
+        # 执行结束后，提取并清理输出
+        full_output = b"".join(output_buffer).decode("utf-8", errors="ignore")
+        clean_output = strip_ansi(full_output).strip()
+    
+        if clean_output:
+            # 保存代理命令返回的内容
+            db.insert_event(Event(
+                timestamp=int(time.time()),
+                source="cli_proxy",
+                actor=command[0],
+                content=clean_output,
+                context_id=cmd_str
+            ))
+        
+        console.print(f"\n[dim]✅ 交互已静默捕获并保存。[/dim]")
 
 @proxy_app.callback(invoke_without_command=True)
 def proxy_callback(ctx: typer.Context):

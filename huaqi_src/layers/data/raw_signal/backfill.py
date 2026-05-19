@@ -45,84 +45,82 @@ def backfill_from_checkpoints(
     if not checkpoints_db_path.exists():
         return {"backfilled": 0, "skipped": 0, "errors": 0}
 
-    ckpt_db = sqlite3.connect(str(checkpoints_db_path))
-
-    threads = ckpt_db.execute(
-        """SELECT thread_id, checkpoint_id, checkpoint
-           FROM checkpoints c1
-           WHERE rowid = (
-               SELECT MAX(rowid) FROM checkpoints c2
-               WHERE c2.thread_id = c1.thread_id
-           )"""
-    ).fetchall()
-
     from langgraph.checkpoint.serde.jsonplus import _msgpack_ext_hook
 
     backfilled = 0
     skipped = 0
     errors = 0
 
-    for tid, cid, blob in threads:
-        try:
-            data = ormsgpack.unpackb(blob, ext_hook=_msgpack_ext_hook)
-            msgs = data.get("channel_values", {}).get(
-                "__start__", {}
-            ).get("messages", data.get("channel_values", {}).get("messages", []))
+    with sqlite3.connect(str(checkpoints_db_path)) as ckpt_db:
+        threads = ckpt_db.execute(
+            """SELECT thread_id, checkpoint_id, checkpoint
+               FROM checkpoints c1
+               WHERE rowid = (
+                   SELECT MAX(rowid) FROM checkpoints c2
+                   WHERE c2.thread_id = c1.thread_id
+               )"""
+        ).fetchall()
 
-            ts_str = data.get("ts", "")
+        for tid, cid, blob in threads:
             try:
-                ts = (
-                    datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                    if ts_str
-                    else datetime.now(timezone.utc)
-                )
-            except ValueError:
-                ts = datetime.now(timezone.utc)
+                data = ormsgpack.unpackb(blob, ext_hook=_msgpack_ext_hook)
+                msgs = data.get("channel_values", {}).get(
+                    "__start__", {}
+                ).get("messages", data.get("channel_values", {}).get("messages", []))
 
-            pair_index = 0
-            user_msg = None
-            for m in msgs:
-                content = ""
-                msg_type = ""
-                if isinstance(m, dict):
-                    msg_type = m.get("type", "")
-                    content = m.get("content", "")
-                elif hasattr(m, "type") and hasattr(m, "content"):
-                    msg_type = m.type
-                    content = m.content
+                ts_str = data.get("ts", "")
+                try:
+                    ts = (
+                        datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        if ts_str
+                        else datetime.now(timezone.utc)
+                    )
+                except ValueError:
+                    ts = datetime.now(timezone.utc)
 
-                if msg_type in ("human", "HumanMessage"):
-                    user_msg = content
-                elif msg_type in ("ai", "AIMessage") and user_msg is not None:
-                    sig_id = _deterministic_id(f"{tid}:{pair_index}")
+                pair_index = 0
+                user_msg = None
+                for m in msgs:
+                    content = ""
+                    msg_type = ""
+                    if isinstance(m, dict):
+                        msg_type = m.get("type", "")
+                        content = m.get("content", "")
+                    elif hasattr(m, "type") and hasattr(m, "content"):
+                        msg_type = m.type
+                        content = m.content
 
-                    existing = signal_store.get(sig_id)
-                    if existing is not None:
-                        skipped += 1
-                    else:
-                        signal = RawSignal(
-                            id=sig_id,
-                            user_id=user_id,
-                            source_type=SourceType.AI_CHAT,
-                            timestamp=ts,
-                            content=f"[用户] {user_msg}\n[Huaqi] {content}",
-                            metadata={
-                                "user_message": user_msg,
-                                "assistant_message": content,
-                                "thread_id": tid,
-                                "checkpoint_id": cid,
-                                "backfilled": True,
-                            },
-                        )
-                        signal_store.save(signal)
-                        backfilled += 1
+                    if msg_type in ("human", "HumanMessage"):
+                        user_msg = content
+                    elif msg_type in ("ai", "AIMessage") and user_msg is not None:
+                        sig_id = _deterministic_id(f"{tid}:{pair_index}")
 
-                    pair_index += 1
-                    user_msg = None
+                        existing = signal_store.get(sig_id)
+                        if existing is not None:
+                            skipped += 1
+                        else:
+                            signal = RawSignal(
+                                id=sig_id,
+                                user_id=user_id,
+                                source_type=SourceType.AI_CHAT,
+                                timestamp=ts,
+                                content=f"[用户] {user_msg}\n[Huaqi] {content}",
+                                metadata={
+                                    "user_message": user_msg,
+                                    "assistant_message": content,
+                                    "thread_id": tid,
+                                    "checkpoint_id": cid,
+                                    "backfilled": True,
+                                },
+                            )
+                            signal_store.save(signal)
+                            backfilled += 1
 
-        except Exception as e:
-            errors += 1
-            logger.debug(f"Backfill error thread={tid[:20]}: {e}")
+                        pair_index += 1
+                        user_msg = None
 
-    ckpt_db.close()
+            except Exception as e:
+                errors += 1
+                logger.debug(f"Backfill error thread={tid[:20]}: {e}")
+
     return {"backfilled": backfilled, "skipped": skipped, "errors": errors}

@@ -16,7 +16,7 @@ class RSSSource(BaseWorldSource):
     def fetch(self) -> list[HuaqiDocument]:
         feed = feedparser.parse(self.url)
         docs = []
-        for entry in feed.entries[:20]:
+        for entry in feed.entries[:3]:
             content = entry.get("summary", entry.get("title", ""))
             title = entry.get("title", "")
             url = entry.get("link", "")

@@ -40,16 +40,16 @@ class WeChatWebhookHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b'{"status": "error", "message": "Content cannot be empty"}')
                     return
                     
-                db = LocalDBStorage()
-                event = Event(
-                    timestamp=int(time.time()),
-                    source="wechat",
-                    actor=actor,
-                    content=content,
-                    context_id=context_id
-                )
-                db.insert_event(event)
-                
+                with LocalDBStorage() as db:
+                    event = Event(
+                        timestamp=int(time.time()),
+                        source="wechat",
+                        actor=actor,
+                        content=content,
+                        context_id=context_id
+                    )
+                    db.insert_event(event)
+
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()

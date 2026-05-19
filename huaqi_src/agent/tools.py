@@ -61,8 +61,8 @@ def search_work_docs_tool(query: str) -> str:
 @tool
 def search_events_tool(query: str) -> str:
     """搜索用户的CLI命令行等历史交互记录。当用户询问系统交互记录、自己说过什么或者系统事件时使用。"""
-    db = LocalDBStorage()
-    results = db.search_events(query, limit=5)
+    with LocalDBStorage() as db:
+        results = db.search_events(query, limit=5)
     
     if not results:
         return f"未找到包含 '{query}' 的相关交互记录。"
@@ -377,7 +377,7 @@ def google_search_tool(query: str) -> str:
     try:
         from ddgs import DDGS
     except ImportError:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
 
     last_err = None
     for attempt in range(3):

@@ -31,9 +31,32 @@ class WorldProvider(DataProvider):
     def _extract_for_report(self, content: str, max_chars: int = 1500) -> str:
         """从世界新闻文件中智能提取报告用内容。
 
-        优先完整保留「重点关注建议」板块，剩余空间用于新闻摘要。
-        无建议板块时回退到简单截断。
+        优先提取「今日精选」板块的标题和选择理由；
+        兼容旧格式的「重点关注建议」板块。
         """
+        # 新格式：提取「今日精选」中的标题 + 选择理由
+        pattern = r'## 今日精选.*?\n(.*?)(?=\n---\n|\Z)'
+        select_match = re.search(pattern, content, re.DOTALL)
+        if select_match:
+            selected = select_match.group(1).strip()
+            lines = []
+            for para in selected.split("\n### "):
+                para = para.strip()
+                if not para or not (para.startswith("精选") or para.startswith("### 精选")):
+                    continue
+                head = para.split("\n")[0].strip()
+                if head:
+                    lines.append(f"- {head}")
+                why_match = re.search(r'\*\*为什么选这篇\*\*[：:]\s*(.+?)(?=\n|$)', para)
+                if why_match:
+                    lines.append(f"  {why_match.group(1)}")
+            if lines:
+                result = "\n".join(lines)
+                if len(result) <= max_chars:
+                    return result
+                return result[:max_chars].rsplit("\n", 1)[0]
+
+        # 旧格式兼容：「重点关注建议」
         suggest_match = re.search(
             r'## 重点关注建议\n(.*?)(?=\n## 新闻详情|\n---\n## )',
             content, re.DOTALL
