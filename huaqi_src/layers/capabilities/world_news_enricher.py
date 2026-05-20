@@ -1,88 +1,132 @@
 """世界新闻内容增强器
 
-使用 LLM 将英文新闻翻译为中文并扩展摘要内容，
-结合用户 TELOS 画像生成个性化重点关注建议。
+按 RSS 源分组处理：每个源独立调用 LLM，
+选出 2 篇最相关 + 1 篇最不相关，生成中文摘要。
 """
 
 import re
+import sys
 from pathlib import Path
 
 
-_ENRICH_FALLBACK = """你是一位专业的新闻编辑，也是一位了解用户个人画像的私人助理。你的任务：先从以下三个领域对新闻进行粗筛分类，再根据用户 TELOS 画像从所有分类中选出**最值得该用户关注的 3 篇新闻**，进行深度中文摘要。
+# ═══ 按源处理 prompt ═══
 
-{raw_content}
+_SOURCE_PROMPT = """你是一位专业新闻编辑和私人助理。以下是来自 **{source_name}** 的 {article_count} 篇文章。
 
 {user_context}
 
-## 工作流程
+## 文章列表
 
-1. **按三个领域粗筛**：将以下所有新闻分为三类（无法归入三类的忽略）：
-   - **AI/科技**：涉及 AI 技术突破、科技公司重大动态、开发者工具变化
-   - **宏观经济与政策**：涉及政策变化、市场趋势、国际关系、监管动态
-   - **行业动态**：涉及具体行业的重要变化
-2. **结合画像评估**：在每个领域内，结合用户画像（如已提供）逐条评估与用户兴趣、职业、目标的相关性
-3. **精选 3 篇**：从所有分类中选出与用户最相关的**恰好 3 篇**（可跨领域），宁缺毋滥
-4. **深度摘要**：对选中的 3 篇逐一撰写中文摘要，并说明选择理由
+{article_list}
 
-## 输出结构
+## 任务
 
-按以下结构输出 Markdown：
+从以上 {article_count} 篇文章中选出：
+- **2 篇与用户最相关的**（用户应该重点关注）
+- **1 篇与用户最不相关的**（拓宽视野，了解用户关注圈外的事情）
 
-# 世界感知摘要 YYYY-MM-DD
+对每篇文章写中文摘要（2-3 段，200-400 字）。
+英文源必须翻译为中文（可保留英文原标题供参考）。
 
-## 领域粗筛结果
+只输出以下格式的 Markdown，不要加任何额外说明：
 
-简述三个领域各筛选出几篇、与本用户关联度如何。
+### 最相关：{{{{中文标题}}}}
+**原文链接**：{{url}}
+**为什么选这篇**：{{一句话，结合用户画像说明为什么这篇值得关注}}
+{{中文摘要}}
 
-## 今日精选（3 篇）
+### 最相关：{{{{中文标题}}}}
+...
 
-对选中的 3 篇新闻，每条按以下格式输出：
-
-### 精选 {{序号}}：{{{{中文标题}}}}
-
-**来源**：{{来源名称}}
-**领域**：{{AI/科技 | 宏观经济与政策 | 行业动态}}
-**链接**：{{原文 URL}}
-{{#if 英文源}}**英文原标题**：{{{{原标题}}}}{{/if}}
-
-**为什么选这篇**：{{结合用户画像，一句话说明这篇文章为什么值得该用户关注}}
-
-{{中文摘要，2-3 段，补充关键背景信息}}
-
----
-
-## 内容要求
-
-1. **精选 3 篇**：只输出 3 篇最相关的新闻，含详细摘要。其余新闻不输出详情
-2. **领域覆盖**：粗筛时三个领域都要考虑，但精选的 3 篇可以来自同一领域（用户画像指向该领域时）
-3. **选择理由**：每条新闻必须说明「为什么选这篇」，结合用户画像（如已提供），否则说明普适重要性
-4. **统一中文输出**：所有内容必须是中文，英文新闻必须翻译（保留英文原标题供参考）
-5. **摘要质量**：每条摘要 2-3 段（200-400 字），补充关键背景，不要照搬原文
-6. **链接必含**：每条新闻必须包含原文链接
-7. **只输出 Markdown**：不要加任何额外说明、前言或结语"""
+### 视野拓展：{{{{中文标题}}}}
+**原文链接**：{{url}}
+**为什么也值得了解**：{{一句话，说明这篇虽然与用户关注领域不同但仍值得了解}}
+{{中文摘要}}"""
 
 
-def _load_enrich_prompt(raw_content: str, user_context: str) -> str:
+def _load_source_prompt(source_name: str, articles: list[str], user_section: str) -> str:
+    """构造单个源的 prompt。"""
+    article_count = len(articles)
+    article_list_parts = []
+    for i, article in enumerate(articles, 1):
+        article_list_parts.append(f"### 文章 {i}\n{article}")
+    article_list = "\n\n".join(article_list_parts)
+
     try:
         from huaqi_src.prompts.loader import get_prompt_loader
         loader = get_prompt_loader()
         system, user = loader.load(
-            "layers.capabilities.world_news_enricher",
-            raw_content=raw_content, user_context=user_context,
+            "layers.capabilities.world_news_enricher_source",
+            source_name=source_name, article_count=str(article_count),
+            article_list=article_list, user_context=user_section,
         )
         result = (system or "") + ("\n" + user if user else "")
-        return result or ""
+        return result or _SOURCE_PROMPT.format(
+            source_name=source_name, article_count=article_count,
+            article_list=article_list, user_context=user_section,
+        )
     except Exception:
-        return _ENRICH_FALLBACK.format(
-            raw_content=raw_content, user_context=user_context
+        return _SOURCE_PROMPT.format(
+            source_name=source_name, article_count=article_count,
+            article_list=article_list, user_context=user_section,
         )
 
+
+# ═══ 聚合 prompt（拼装最终文件） ═══
+
+_AGGREGATE_PROMPT = """你是一位专业新闻编辑。以下是今日从 6 个新闻源各自精选的文章摘要。
+
+{all_sources_content}
+
+{user_context}
+
+## 任务
+
+请输出最终的世界感知摘要 Markdown 文件。结构如下：
+
+# 世界感知摘要 YYYY-MM-DD
+
+## 领域概览
+简述今日各领域新闻的整体态势（AI/科技、宏观经济与政策、行业动态各一两句）。
+
+## {source_1}
+（保留该源的 3 篇文章摘要原文）
+
+## {source_2}
+...
+
+## {source_6}
+
+## 综合推荐
+结合用户画像，从今日 18 篇文章中选出**最值得用户关注的 3 篇**，各用一句话说明理由。
+
+只输出 Markdown，不要加任何额外说明。"""
+
+
+def _load_aggregate_prompt(all_sources: str, user_section: str) -> str:
+    """构造最终聚合 prompt。"""
+    # 提取源名称列表用于输出结构提示
+    source_names = []
+    for line in all_sources.split("\n"):
+        if line.startswith("## "):
+            name = line[3:].strip()
+            if name not in source_names:
+                source_names.append(name)
+
+    source_list = "\n".join(f"## {s}\n（保留该源的 3 篇文章摘要原文）" for s in source_names)
+
+    prompt_text = _AGGREGATE_PROMPT.replace("{all_sources_content}", all_sources)
+    prompt_text = prompt_text.replace("{user_context}", user_section)
+    prompt_text = prompt_text.replace("{source_1}\n（保留该源的 3 篇文章摘要原文）\n\n## {source_2}\n...\n\n## {source_6}", source_list)
+    return prompt_text
+
+
+# ═══ 辅助函数 ═══
 
 def _build_user_context_section(telos_snapshot: str | None) -> str:
     """将 TELOS snapshot 转为 prompt 可用的简短用户画像段落。"""
     if not telos_snapshot or not telos_snapshot.strip():
         return ""
-    # 提取内容行，过滤掉 markdown frontmatter 噪音
     lines = []
     for line in telos_snapshot.split("\n"):
         stripped = line.strip()
@@ -94,82 +138,141 @@ def _build_user_context_section(telos_snapshot: str | None) -> str:
             continue
         lines.append(stripped)
     summary = " ".join(lines)
-    # 限制长度，避免 prompt 过长
     if len(summary) > 1500:
         summary = summary[:1500].rsplit("。", 1)[0] + "。"
     return summary
 
 
-_MAX_RAW_CONTENT_CHARS = 25000
+def _parse_sources(raw_content: str) -> dict[str, list[str]]:
+    """按源分组文章，返回 {source_name: [article_md]}。
+
+    原始文件格式：
+        # 世界感知摘要 YYYY-MM-DD
+        ## 36氪
+        # article title
+        content...
+        **链接**：url
+        ---
+        ## BBC科技
+        ...
+    """
+    sources: dict[str, list[str]] = {}
+    parts = raw_content.split("\n## ")
+    for part in parts[1:]:  # 跳过 H1 标题
+        try:
+            source_name, body = part.split("\n", 1)
+        except ValueError:
+            continue
+        source_name = source_name.strip()
+        articles = [a.strip() for a in body.split("\n---\n") if a.strip()]
+        if source_name not in sources:
+            sources[source_name] = []
+        sources[source_name].extend(articles)
+    return sources
 
 
-def _truncate_raw_content(raw_content: str, max_chars: int = _MAX_RAW_CONTENT_CHARS) -> str:
-    """截断过长原始内容，按文章边界截断避免切断单条新闻。"""
-    if len(raw_content) <= max_chars:
-        return raw_content
-    truncated = raw_content[:max_chars]
-    last_sep = truncated.rfind("\n---")
-    if last_sep > max_chars // 2:
-        return truncated[:last_sep].strip()
-    last_nl = truncated.rfind("\n\n")
-    if last_nl > max_chars // 2:
-        return truncated[:last_nl].strip()
-    return truncated
+def _extract_markdown(text: str) -> str:
+    """从 LLM 回复中提取 Markdown 内容。"""
+    md_match = re.search(r"```(?:markdown|md)?\s*\n(.*?)\n```", text, re.DOTALL)
+    if md_match:
+        return md_match.group(1).strip()
+    heading_idx = text.find("\n# ")
+    if heading_idx == -1:
+        heading_idx = text.find("# ")
+    if heading_idx > 0:
+        return text[heading_idx:].strip()
+    return text.strip()
 
+
+# ═══ 主类 ═══
 
 class WorldNewsEnricher:
-    """使用 LLM 翻译和扩展世界新闻内容。"""
+    """使用 LLM 翻译和扩展世界新闻内容。
+
+    按 RSS 源逐个处理：每个源的 3 篇文章一次 LLM 调用，
+    选出 2 篇最相关 + 1 篇最不相关并生成中文摘要。
+    """
 
     def __init__(self, llm_manager):
         self._llm = llm_manager
 
     def enrich_file(self, file_path: Path, user_context: str | None = None) -> bool:
-        """读取世界新闻文件，翻译并扩展内容，原地覆写。
-
-        Args:
-            file_path: 世界新闻 markdown 文件路径
-            user_context: 可选的用户画像文本（来自 TELOS），用于个性化重点关注建议
-        """
+        """读取世界新闻文件，按源处理，原地覆写。"""
         raw_content = file_path.read_text(encoding="utf-8")
         if not raw_content.strip():
             return False
 
-        raw_content = _truncate_raw_content(raw_content)
-
         user_section = _build_user_context_section(user_context)
-        prompt = _load_enrich_prompt(
-            raw_content=raw_content, user_context=user_section
-        )
 
-        import sys
+        sources = _parse_sources(raw_content)
+        if not sources:
+            print("[WorldNewsEnricher] 未解析到任何新闻源", file=sys.stderr)
+            return False
+
+        enriched_parts: list[str] = []
+        for source_name in sorted(sources.keys()):
+            articles = sources[source_name]
+            result = self._enrich_one_source(source_name, articles, user_section)
+            if result:
+                enriched_parts.append(result)
+            else:
+                print(
+                    f"[WorldNewsEnricher] 源 '{source_name}' 增强失败，跳过",
+                    file=sys.stderr,
+                )
+
+        if not enriched_parts:
+            print("[WorldNewsEnricher] 所有源增强均失败", file=sys.stderr)
+            return False
+
+        all_sources_text = "\n\n".join(enriched_parts)
+
+        # 用聚合 prompt 生成最终文件
+        aggregate_prompt = _load_aggregate_prompt(all_sources_text, user_section)
+        try:
+            response = self._llm.quick_chat(
+                aggregate_prompt,
+                system="你是一位专业新闻编辑，擅长整理和撰写中文新闻摘要。",
+            )
+        except Exception as e:
+            print(
+                f"[WorldNewsEnricher] 聚合 LLM 调用失败: {e}，"
+                f"使用原始拼接结果",
+                file=sys.stderr,
+            )
+            response = all_sources_text
+
+        final = _extract_markdown(response)
+        if not final:
+            final = all_sources_text
+
+        file_path.write_text(final, encoding="utf-8")
+        return True
+
+    def _enrich_one_source(
+        self, source_name: str, articles: list[str], user_section: str,
+    ) -> str | None:
+        """对单个源调用 LLM，返回该源的摘要 Markdown。"""
+        prompt = _load_source_prompt(source_name, articles, user_section)
         try:
             response = self._llm.quick_chat(
                 prompt,
                 system="你是一位专业新闻编辑，擅长翻译和撰写中文新闻摘要。",
             )
         except Exception as e:
-            print(f"[WorldNewsEnricher] LLM 调用失败: {e}", file=sys.stderr)
-            return False
+            print(
+                f"[WorldNewsEnricher] 源 '{source_name}' LLM 调用失败: {e}",
+                file=sys.stderr,
+            )
+            return None
 
-        enriched = _extract_markdown(response)
-        if not enriched:
-            print(f"[WorldNewsEnricher] LLM 返回内容为空（原始长度: {len(response)} 字符）", file=sys.stderr)
-            return False
+        result = _extract_markdown(response)
+        if not result:
+            print(
+                f"[WorldNewsEnricher] 源 '{source_name}' 返回内容为空"
+                f"（原始长度: {len(response)} 字符）",
+                file=sys.stderr,
+            )
+            return None
 
-        file_path.write_text(enriched, encoding="utf-8")
-        return True
-
-
-def _extract_markdown(text: str) -> str:
-    """从 LLM 回复中提取 Markdown 内容（去掉可能的代码块包裹和前言）。"""
-    md_match = re.search(r"```(?:markdown|md)?\s*\n(.*?)\n```", text, re.DOTALL)
-    if md_match:
-        return md_match.group(1).strip()
-
-    heading_idx = text.find("\n# ")
-    if heading_idx == -1:
-        heading_idx = text.find("# ")
-    if heading_idx > 0:
-        return text[heading_idx:].strip()
-
-    return text.strip()
+        return f"## {source_name}\n\n{result}"
