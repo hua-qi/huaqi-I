@@ -153,16 +153,28 @@ def _parse_sources(raw_content: str) -> dict[str, list[str]]:
     return sources
 
 
+def _normalize_headings(text: str, article_headings: bool = False) -> str:
+    """修正 LLM 输出的标题级别。DeepSeek 习惯用 H1 而非要求的 H2/H3。"""
+    if article_headings:
+        # Per-source: # 最相关 → ### 最相关, # 视野拓展 → ### 视野拓展
+        text = re.sub(r'^# (最相关)', r'### \1', text, flags=re.MULTILINE)
+        text = re.sub(r'^# (视野拓展)', r'### \1', text, flags=re.MULTILINE)
+    else:
+        # Aggregate: # 领域概览 → ## 领域概览, # 综合推荐 → ## 综合推荐
+        text = re.sub(r'^# (领域概览)', r'## \1', text, flags=re.MULTILINE)
+        text = re.sub(r'^# (综合推荐)', r'## \1', text, flags=re.MULTILINE)
+    return text
+
+
 def _extract_markdown(text: str) -> str:
     """从 LLM 回复中提取 Markdown 内容。"""
     md_match = re.search(r"```(?:markdown|md)?\s*\n(.*?)\n```", text, re.DOTALL)
     if md_match:
         return md_match.group(1).strip()
-    heading_idx = text.find("\n# ")
-    if heading_idx == -1:
-        heading_idx = text.find("# ")
-    if heading_idx > 0:
-        return text[heading_idx:].strip()
+    # 从第一个 # / ## / ### 标题开始提取（去除 LLM 闲聊前言）
+    m = re.search(r"^#{1,3} ", text, re.MULTILINE)
+    if m and m.start() > 0:
+        return text[m.start():].strip()
     return text.strip()
 
 
@@ -217,7 +229,7 @@ class WorldNewsEnricher:
                 aggregate_prompt,
                 system="你是一位专业新闻编辑，擅长整理和撰写中文新闻摘要。",
             )
-            overview = _extract_markdown(response)
+            overview = _normalize_headings(_extract_markdown(response))
         except Exception as e:
             print(
                 f"[WorldNewsEnricher] 聚合 LLM 调用失败: {e}",
@@ -260,4 +272,5 @@ class WorldNewsEnricher:
             )
             return None
 
+        result = _normalize_headings(result, article_headings=True)
         return f"## {source_name}\n\n{result}"
