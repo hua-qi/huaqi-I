@@ -10,27 +10,23 @@ world_app = typer.Typer(help="世界新闻采集")
 
 
 def _build_enricher():
-    """从环境变量构建 WorldNewsEnricher（如果 LLM 可用）。"""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return None
+    """使用与 TELOS 相同的 LLM 配置构建 WorldNewsEnricher。
+
+    从 memory/config.yaml 读取 LLM 提供商和 api_base，
+    与 TELOS 蒸馏共用配置，不再硬编码直连 OpenAI。
+    """
     try:
-        from huaqi_src.layers.capabilities.llm.manager import LLMManager, LLMConfig
+        from huaqi_src.cli.context import ensure_initialized, build_llm_manager
         from huaqi_src.layers.capabilities.world_news_enricher import WorldNewsEnricher
 
-        llm = LLMManager()
-        llm.add_config(LLMConfig(
-            provider="openai",
-            model=os.environ.get("HUAQI_ENRICH_MODEL", "gpt-4o-mini"),
-            api_key=api_key,
-            temperature=0.3,
-            max_tokens=8000,
-            timeout=120,
-        ))
-        llm.set_active("openai")
+        ensure_initialized()
+        llm = build_llm_manager(temperature=0.3, max_tokens=8000, timeout=120)
+        if llm is None:
+            typer.echo("[World] 未找到 LLM 配置，跳过内容增强", err=True)
+            return None
         return WorldNewsEnricher(llm)
     except Exception as e:
-        typer.echo(f"[World] 增强器初始化失败: {e}")
+        typer.echo(f"[World] 增强器初始化失败: {e}", err=True)
         return None
 
 

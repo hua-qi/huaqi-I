@@ -8,16 +8,18 @@ runner = CliRunner()
 
 
 def test_world_fetch_command_runs_pipeline():
-    with patch("huaqi_src.cli.commands.world.WorldPipeline") as MockPipeline:
-        MockPipeline.return_value.run.return_value = "path/to/file.md"
+    with patch("huaqi_src.cli.commands.world.WorldPipeline") as MockPipeline, \
+         patch("huaqi_src.cli.commands.world._build_enricher", return_value=None):
+        MockPipeline.return_value.run.return_value = Path("path/to/file.md")
         result = runner.invoke(app, ["world", "fetch"])
         assert result.exit_code == 0
         MockPipeline.return_value.run.assert_called_once()
 
 
 def test_world_fetch_command_with_date_option():
-    with patch("huaqi_src.cli.commands.world.WorldPipeline") as MockPipeline:
-        MockPipeline.return_value.run.return_value = "path/to/file.md"
+    with patch("huaqi_src.cli.commands.world.WorldPipeline") as MockPipeline, \
+         patch("huaqi_src.cli.commands.world._build_enricher", return_value=None):
+        MockPipeline.return_value.run.return_value = Path("path/to/file.md")
         result = runner.invoke(app, ["world", "fetch", "--date", "2026-01-01"])
         assert result.exit_code == 0
         call_kwargs = MockPipeline.return_value.run.call_args
@@ -26,7 +28,8 @@ def test_world_fetch_command_with_date_option():
 
 
 def test_world_fetch_command_shows_error_on_failure():
-    with patch("huaqi_src.cli.commands.world.WorldPipeline") as MockPipeline:
+    with patch("huaqi_src.cli.commands.world.WorldPipeline") as MockPipeline, \
+         patch("huaqi_src.cli.commands.world._build_enricher", return_value=None):
         MockPipeline.return_value.run.return_value = None
         result = runner.invoke(app, ["world", "fetch"])
         assert result.exit_code != 0 or "失败" in result.output or "未获取" in result.output
