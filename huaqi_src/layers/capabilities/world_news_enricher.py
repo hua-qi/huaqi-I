@@ -72,9 +72,9 @@ def _load_source_prompt(source_name: str, articles: list[str], user_section: str
         )
 
 
-# ═══ 聚合 prompt（拼装最终文件） ═══
+# ═══ 聚合 prompt（仅生成领域概览 + 综合推荐） ═══
 
-_AGGREGATE_PROMPT = """你是一位专业新闻编辑。以下是今日从 6 个新闻源各自精选的文章摘要。
+_AGGREGATE_PROMPT = """你是一位专业新闻编辑。以下是今日从各新闻源精选的文章摘要。
 
 {all_sources_content}
 
@@ -82,42 +82,24 @@ _AGGREGATE_PROMPT = """你是一位专业新闻编辑。以下是今日从 6 个
 
 ## 任务
 
-请输出最终的世界感知摘要 Markdown 文件。结构如下：
-
-# 世界感知摘要 YYYY-MM-DD
+请严格按以下格式输出，标题必须用 H2（##）：
 
 ## 领域概览
 简述今日各领域新闻的整体态势（AI/科技、宏观经济与政策、行业动态各一两句）。
 
-## {source_1}
-（保留该源的 3 篇文章摘要原文）
-
-## {source_2}
-...
-
-## {source_6}
-
 ## 综合推荐
-结合用户画像，从今日 18 篇文章中选出**最值得用户关注的 3 篇**，各用一句话说明理由。
+结合用户画像，从今日所有文章中选出**最值得用户关注的 3 篇**，格式：
+1. **文章标题**（源名称）：一句话推荐理由
+2. **文章标题**（源名称）：一句话推荐理由
+3. **文章标题**（源名称）：一句话推荐理由
 
-只输出 Markdown，不要加任何额外说明。"""
+只输出以上两段，不要加 H1 标题或额外说明。"""
 
 
 def _load_aggregate_prompt(all_sources: str, user_section: str) -> str:
     """构造最终聚合 prompt。"""
-    # 提取源名称列表用于输出结构提示
-    source_names = []
-    for line in all_sources.split("\n"):
-        if line.startswith("## "):
-            name = line[3:].strip()
-            if name not in source_names:
-                source_names.append(name)
-
-    source_list = "\n".join(f"## {s}\n（保留该源的 3 篇文章摘要原文）" for s in source_names)
-
     prompt_text = _AGGREGATE_PROMPT.replace("{all_sources_content}", all_sources)
     prompt_text = prompt_text.replace("{user_context}", user_section)
-    prompt_text = prompt_text.replace("{source_1}\n（保留该源的 3 篇文章摘要原文）\n\n## {source_2}\n...\n\n## {source_6}", source_list)
     return prompt_text
 
 
@@ -227,24 +209,27 @@ class WorldNewsEnricher:
 
         all_sources_text = "\n\n".join(enriched_parts)
 
-        # 用聚合 prompt 生成最终文件
+        # 聚合 LLM：仅生成领域概览 + 综合推荐
         aggregate_prompt = _load_aggregate_prompt(all_sources_text, user_section)
+        overview = ""
         try:
             response = self._llm.quick_chat(
                 aggregate_prompt,
                 system="你是一位专业新闻编辑，擅长整理和撰写中文新闻摘要。",
             )
+            overview = _extract_markdown(response)
         except Exception as e:
             print(
-                f"[WorldNewsEnricher] 聚合 LLM 调用失败: {e}，"
-                f"使用原始拼接结果",
+                f"[WorldNewsEnricher] 聚合 LLM 调用失败: {e}",
                 file=sys.stderr,
             )
-            response = all_sources_text
 
-        final = _extract_markdown(response)
-        if not final:
-            final = all_sources_text
+        # 代码拼装最终文件（避免 LLM 重组导致标题重复或内容丢失）
+        date_str = file_path.stem
+        final = f"# 世界感知摘要 {date_str}\n\n"
+        if overview:
+            final += overview + "\n\n"
+        final += all_sources_text + "\n"
 
         file_path.write_text(final, encoding="utf-8")
         return True

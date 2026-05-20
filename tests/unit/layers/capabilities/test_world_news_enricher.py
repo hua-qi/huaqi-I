@@ -26,14 +26,8 @@ React 19即将发布，带来全新的Server Components架构。
 
 联合国气候大会达成新减排协议，各主要经济体承诺加大清洁能源投资。"""
 
-MOCK_AGGREGATE_CONTENT = """# 世界感知摘要 2026-05-15
-
-## 领域概览
+MOCK_AGGREGATE_CONTENT = """## 领域概览
 今日AI/科技领域持续活跃，宏观经济政策保持稳定。
-
-## TestSource
-
-""" + MOCK_SOURCE_CONTENT + """
 
 ## 综合推荐
 基于用户AI工程师画像，建议重点关注AI技术趋势和前端框架动态。"""
