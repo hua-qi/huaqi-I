@@ -68,6 +68,9 @@ def build_llm_manager(temperature: float = 0.7, max_tokens: int = 1500, timeout:
     if provider_name not in config.llm_providers:
         return None
     provider_config = config.llm_providers[provider_name]
+    if not provider_config.api_base:
+        import sys
+        print(f"[LLM] 警告：'{provider_name}' 未配置 api_base，将直连默认端点", file=sys.stderr)
     api_key = provider_config.api_key or os.environ.get("WQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
     llm = LLMManager()
     from huaqi_src.layers.capabilities.llm.manager import OpenAIProvider
