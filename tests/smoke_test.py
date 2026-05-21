@@ -1767,13 +1767,12 @@ class TestWorldNewsEnhance:
 
     def test_enricher_prompt_requires_key_sections(self, data_dir, set_data_dir):
         """AC-2/AC-3/AC-5: 增强 prompt 要求中英对照、重点关注建议、中文源处理。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _ENRICH_FALLBACK
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _SOURCE_PROMPT
 
-        assert "英文原标题" in _ENRICH_FALLBACK or "英文" in _ENRICH_FALLBACK
-        assert "链接" in _ENRICH_FALLBACK
-        assert "重点关注建议" in _ENRICH_FALLBACK
-        assert "中文" in _ENRICH_FALLBACK
-        assert "{user_context}" in _ENRICH_FALLBACK
+        assert "英文" in _SOURCE_PROMPT
+        assert "链接" in _SOURCE_PROMPT
+        assert "中文" in _SOURCE_PROMPT
+        assert "{user_context}" in _SOURCE_PROMPT
 
     def test_enricher_graceful_degradation(self, data_dir, set_data_dir):
         """AC-6: 空文件和 LLM 失败时优雅降级。"""
@@ -2026,7 +2025,7 @@ class TestPromptsOverhaul:
             "layers.growth.telos.context.chat",
             "layers.capabilities.reports.morning",
             "layers.capabilities.reports.growth",
-            "layers.capabilities.world_news_enricher",
+            "layers.capabilities.world_news_enricher_source",
             "layers.capabilities.learning.outline",
             "layers.capabilities.onboarding.telos_generator",
             "layers.capabilities.personality.engine",

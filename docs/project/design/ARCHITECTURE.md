@@ -141,34 +141,44 @@ huaqi_src/
 │   │   │   ├── manager.py        # 画像持久化与字段更新
 │   │   │   └── narrative.py      # LLM 叙事性画像生成
 │   │   ├── raw_signal/           # 统一摄取（所有输入的入口）
-│   │   │   ├── models.py / store.py / pipeline.py
+│   │   │   ├── models.py / store.py / pipeline.py / backfill.py
 │   │   │   └── converters/       # 各数据源转换器
 │   │   └── world/                # 外部世界数据（RSS 等）
+│   │       ├── pipeline.py / storage.py / fetcher.py
+│   │       └── sources/          # 各新闻源适配器
 │   │
 │   ├── capabilities/             # 能力层：帮用户干活
 │   │   ├── care/                 # 主动关怀系统
 │   │   │   └── engine.py         # ProactiveCareEngine
+│   │   ├── codeflicker/          # CLAUDE.md 自动写入
+│   │   │   └── claude_md_writer.py
 │   │   ├── growth/               # 技能与目标追踪
 │   │   │   └── tracker.py        # GrowthTracker
 │   │   ├── hooks/                # Hook 事件系统
 │   │   │   └── manager.py        # HooksManager
 │   │   ├── learning/             # 学习助手
 │   │   │   ├── models.py / progress_store.py
-│   │   │   ├── course_generator.py / learning_tools.py
+│   │   │   ├── course_generator.py / learning_tools.py / tracker.py
 │   │   ├── llm/                  # LLM 抽象（多提供商）
 │   │   │   └── manager.py        # LLMManager, LLMConfig, Message
 │   │   ├── onboarding/           # 用户引导
+│   │   │   ├── questionnaire.py / telos_generator.py
 │   │   ├── pattern/              # 模式学习与周报
 │   │   │   └── engine.py         # PatternLearningEngine
 │   │   ├── personality/          # 五维人格引擎
 │   │   │   ├── engine.py / updater.py
 │   │   ├── pipeline/             # 内容流水线（X/RSS → 摘要 → 发布）
-│   │   │   ├── models.py / core.py
+│   │   │   ├── models.py / core.py / job_manager.py
 │   │   │   ├── sources/ / processors/ / platforms/
-│   │   └── reports/              # 定时报告（晨/日/周/季报）
-│   │       ├── morning_brief.py / daily_report.py / weekly_report.py
-│   │       ├── quarterly_report.py / growth_report.py / context_builder.py
-│   │       └── providers/        # 各报告数据提供者
+│   │   ├── reports/              # 定时报告（晨/日/周/季报）
+│   │   │   ├── manager.py / morning_brief.py / daily_report.py
+│   │   │   ├── weekly_report.py / quarterly_report.py / growth_report.py
+│   │   │   ├── context_builder.py
+│   │   │   └── providers/        # 各报告数据提供者
+│   │   ├── telos_distiller/      # TELOS 信号蒸馏（CLI/CI 入口）
+│   │   │   └── engine.py
+│   │   └── world_news_enricher/  # 世界新闻 LLM 增强（按源处理）
+│   │       └── engine.py
 │   │
 │   └── growth/                   # 成长层：理解、提炼、更新
 │       └── telos/                # TELOS 知识图谱
@@ -180,11 +190,8 @@ huaqi_src/
 │   └── wechat_webhook.py
 │
 └── scheduler/                    # 定时任务（驱动三层运转）
-    ├── manager.py                # APScheduler 封装
-    ├── handlers.py               # 任务处理器注册
-    ├── jobs.py                   # 任务定义
-    ├── pipeline_job.py           # 流水线定时任务
-    └── apscheduler_adapter.py    # 同步调度器适配器
+    ├── scheduled_job_store.py    # 定时任务持久化存储
+    └── job_runner.py             # 任务执行引擎
 ```
 
 ---
@@ -363,61 +370,19 @@ await pipeline.run(dry_run=True)  # 预览模式
 
 ### 3.6 调度器 (`huaqi_src/scheduler/`)
 
-#### APScheduler 封装
+定时任务持久化存储与执行引擎，支持 cron/interval/date 触发器，任务定义持久化到 SQLite。
 
 ```python
-class SchedulerManager:
-    """
-    功能:
-    - 支持 cron/interval/date 三种触发器
-    - 任务持久化到 SQLite
-    - 任务执行事件监听
-    """
-    
-    def add_cron_job(self, job_id: str, func: Callable, cron: str):
-        """添加定时任务，如每天早上8点问候"""
-        trigger = CronTrigger.from_crontab("0 8 * * *")
-        self.scheduler.add_job(func, trigger, id=job_id)
+class ScheduledJobStore:
+    """定时任务 SQLite 持久化存储"""
+    def add_job(self, job_id: str, cron: str, handler: str): ...
+    def list_jobs(self) -> list[dict]: ...
+    def remove_job(self, job_id: str): ...
+
+class JobRunner:
+    """任务执行引擎，支持 dry-run 模式"""
+    def run_job(self, job_id: str) -> dict: ...
 ```
-
-#### 内置任务
-
-- `morning_greeting`: 每日晨间问候
-- `daily_summary`: 每日总结生成
-- `content_pipeline`: 定时内容抓取
-
-### 3.7 Schema 系统 (`huaqi_src/core/schema.py`)
-
-#### 动态维度定义
-
-```python
-class DimensionSchema:
-    """维度 Schema 定义"""
-    dimension_id: str           # 维度ID
-    dimension_name: str         # 维度名称
-    dimension_type: DimensionType  # 类型
-    allowed_values: List[str]   # 允许值
-    extraction_prompt: str      # LLM 提取提示
-    priority: int               # 优先级 1-10
-```
-
-#### 维度类型
-
-| 类型 | 说明 | 示例 |
-|------|------|------|
-| `CATEGORY` | 枚举值 | 主导情绪 |
-| `SCORE` | 0-1 分数 | 分享倾向 |
-| `SCALE` | 1-10 量表 | 情绪强度 |
-| `TEXT` | 文本描述 | 深层意图 |
-| `LIST` | 列表 | 话题列表 |
-| `JSON` | 任意 JSON | 立场数据 |
-
-#### 内置维度
-
-- **情绪维度**: `emotion.primary`, `emotion.intensity`
-- **意图维度**: `intent.surface`, `intent.deep`
-- **话题维度**: `topics`, `stances`, `facts`
-- **内容偏好**: `content.topic_interest`, `content.depth_preference`
 
 ---
 
@@ -792,6 +757,10 @@ Git Commit
 | `huaqi_src/layers/capabilities/pattern/engine.py` | 模式学习与周报生成 | ⭐⭐⭐ |
 | `huaqi_src/layers/capabilities/care/engine.py` | 主动关怀触发系统 | ⭐⭐⭐ |
 | `huaqi_src/layers/data/events/store.py` | 事件 SQLite 存储 | ⭐⭐⭐ |
+| `huaqi_src/layers/capabilities/telos_distiller/engine.py` | TELOS 信号蒸馏 CLI/CI 入口 | ⭐⭐⭐ |
+| `huaqi_src/layers/capabilities/world_news_enricher/engine.py` | 世界新闻 LLM 增强 | ⭐⭐⭐ |
+| `huaqi_src/layers/data/memory/storage/markdown_store.py` | Markdown 记忆持久化 | ⭐⭐⭐⭐ |
+| `huaqi_src/scheduler/job_runner.py` | 定时任务执行引擎 | ⭐⭐⭐ |
 | `huaqi_src/layers/growth/telos/engine.py` | TELOS 知识图谱提炼引擎 | ⭐⭐⭐⭐ |
 | `huaqi_src/scheduler/manager.py` | APScheduler 定时任务封装 | ⭐⭐⭐⭐ |
 | `docs/project/guides/dev/code-standards.md` | 代码及文件组织规范（agent 参考） | ⭐⭐⭐⭐⭐ |

@@ -15,7 +15,7 @@ class TestRunDistillation:
         mock_store.query.return_value = []
 
         with patch(
-            "huaqi_src.layers.capabilities.telos_distiller._get_signal_store",
+            "huaqi_src.layers.capabilities.telos_distiller.engine._get_signal_store",
             return_value=mock_store,
         ):
             result = run_distillation(limit=10, user_id="test_user")
@@ -47,11 +47,11 @@ class TestRunDistillation:
         mock_pipeline.process = AsyncMock(return_value={"signal_id": "s1"})
 
         with patch(
-            "huaqi_src.layers.capabilities.telos_distiller._get_signal_store",
+            "huaqi_src.layers.capabilities.telos_distiller.engine._get_signal_store",
             return_value=mock_store,
         ):
             with patch(
-                "huaqi_src.layers.capabilities.telos_distiller._get_pipeline",
+                "huaqi_src.layers.capabilities.telos_distiller.engine._get_pipeline",
                 return_value=mock_pipeline,
             ):
                 result = run_distillation(limit=10, user_id="test_user")
@@ -90,11 +90,11 @@ class TestRunDistillation:
         mock_pipeline.process = AsyncMock(side_effect=side_effect)
 
         with patch(
-            "huaqi_src.layers.capabilities.telos_distiller._get_signal_store",
+            "huaqi_src.layers.capabilities.telos_distiller.engine._get_signal_store",
             return_value=mock_store,
         ):
             with patch(
-                "huaqi_src.layers.capabilities.telos_distiller._get_pipeline",
+                "huaqi_src.layers.capabilities.telos_distiller.engine._get_pipeline",
                 return_value=mock_pipeline,
             ):
                 result = run_distillation(limit=10, user_id="test_user")
@@ -120,13 +120,13 @@ class TestRunDistillation:
         mock_pipeline.process = AsyncMock(return_value={"signal_id": signal.id})
 
         with patch(
-            "huaqi_src.layers.capabilities.telos_distiller._get_signal_store",
+            "huaqi_src.layers.capabilities.telos_distiller.engine._get_signal_store",
             return_value=mock_store,
         ):
             with patch(
-                "huaqi_src.layers.capabilities.telos_distiller._get_pipeline",
+                "huaqi_src.layers.capabilities.telos_distiller.engine._get_pipeline",
                 return_value=mock_pipeline,
             ):
                 run_distillation(limit=10, user_id="test_user")
 
-        mock_store.mark_processed.assert_called_once_with(signal.id)
+        mock_pipeline.process.assert_awaited_once_with(signal)

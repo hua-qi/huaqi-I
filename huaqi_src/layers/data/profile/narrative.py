@@ -214,7 +214,7 @@ class ProfileNarrativeManager:
         )
 
     def generate(self, llm_manager) -> ProfileNarrative:
-        from huaqi_src.layers.capabilities.llm.manager import Message
+        from huaqi_src.layers.models import Message
 
         data = self._collect_data()
         prompt = self._build_prompt(data)

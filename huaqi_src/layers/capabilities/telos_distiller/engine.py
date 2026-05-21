@@ -23,7 +23,7 @@ def _get_pipeline():
     from huaqi_src.config.paths import get_telos_dir, require_data_dir
     from huaqi_src.config.adapters.storage import SQLiteStorageAdapter
     from huaqi_src.layers.data.raw_signal.store import RawSignalStore
-    from huaqi_src.layers.data.raw_signal.pipeline import DistillationPipeline
+    from huaqi_src.layers.growth.telos.pipeline import DistillationPipeline
     from huaqi_src.layers.growth.telos.engine import TelosEngine
     from huaqi_src.layers.growth.telos.manager import TelosManager
     from huaqi_src.layers.growth.telos.growth_events import GrowthEventStore
@@ -87,7 +87,6 @@ async def _run_async(limit: int, user_id: str) -> Dict[str, Any]:
     for signal in unprocessed:
         try:
             await pipeline.process(signal)
-            store.mark_processed(signal.id)
             processed += 1
         except Exception as e:
             errors += 1

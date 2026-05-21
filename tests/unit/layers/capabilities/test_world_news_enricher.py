@@ -38,36 +38,36 @@ MOCK_AGGREGATE_CONTENT = """## 领域概览
 class TestEnricherPrompt:
     def test_prompt_has_source_placeholder(self):
         """prompt 包含 source_name 占位符。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _SOURCE_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _SOURCE_PROMPT
         assert "{source_name}" in _SOURCE_PROMPT
         assert "{article_list}" in _SOURCE_PROMPT
         assert "{user_context}" in _SOURCE_PROMPT
 
     def test_prompt_requires_two_most_relevant(self):
         """prompt 要求选出 2 篇最相关。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _SOURCE_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _SOURCE_PROMPT
         assert "2 篇与用户最相关的" in _SOURCE_PROMPT
 
     def test_prompt_requires_one_least_relevant(self):
         """prompt 要求选出 1 篇最不相关（视野拓展）。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _SOURCE_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _SOURCE_PROMPT
         assert "1 篇与用户最不相关的" in _SOURCE_PROMPT
         assert "视野拓展" in _SOURCE_PROMPT
 
     def test_prompt_requires_chinese_summary(self):
         """prompt 要求中文摘要。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _SOURCE_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _SOURCE_PROMPT
         assert "中文摘要" in _SOURCE_PROMPT
         assert "翻译为中文" in _SOURCE_PROMPT
 
     def test_prompt_has_link_requirement(self):
         """prompt 要求包含原文链接。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _SOURCE_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _SOURCE_PROMPT
         assert "原文链接" in _SOURCE_PROMPT
 
     def test_prompt_has_user_context_placeholder(self):
         """prompt 包含用户画像占位符。"""
-        from huaqi_src.layers.capabilities.world_news_enricher import _SOURCE_PROMPT
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _SOURCE_PROMPT
         assert "{user_context}" in _SOURCE_PROMPT
 
 
@@ -75,7 +75,7 @@ class TestEnricherPrompt:
 
 class TestUserContextSection:
     def test_build_with_valid_snapshot(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import \
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import \
             _build_user_context_section
 
         snapshot = """## 核心认知（TELOS）
@@ -101,7 +101,7 @@ layer: middle
         assert "AI 助手" in result or "Agent" in result
 
     def test_build_with_empty_snapshot(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import \
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import \
             _build_user_context_section
 
         assert _build_user_context_section("") == ""
@@ -112,7 +112,7 @@ layer: middle
 
 class TestParseSources:
     def test_single_source(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import _parse_sources
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _parse_sources
 
         raw = (
             "# 世界感知摘要 2026-05-15\n\n"
@@ -125,7 +125,7 @@ class TestParseSources:
         assert "Title 1" in sources["36氪"][0]
 
     def test_multiple_sources(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import _parse_sources
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _parse_sources
 
         raw = (
             "# 世界感知摘要 2026-05-15\n\n"
@@ -142,7 +142,7 @@ class TestParseSources:
         assert len(sources["BBC科技"]) == 1
 
     def test_multiple_articles_same_source(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import _parse_sources
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import _parse_sources
 
         raw = (
             "# 世界感知摘要 2026-05-15\n\n"
@@ -239,7 +239,7 @@ class TestEnricherFileOperations:
 
 class TestExtractMarkdown:
     def test_extract_from_code_block(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import \
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import \
             _extract_markdown
 
         text = "Here is the result:\n```markdown\n# Title\n\nContent\n```\nDone."
@@ -247,7 +247,7 @@ class TestExtractMarkdown:
         assert result == "# Title\n\nContent"
 
     def test_extract_from_heading(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import \
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import \
             _extract_markdown
 
         text = "Some preface text\n\n# Real Title\n\nReal content"
@@ -255,7 +255,7 @@ class TestExtractMarkdown:
         assert result == "# Real Title\n\nReal content"
 
     def test_extract_plain_text(self):
-        from huaqi_src.layers.capabilities.world_news_enricher import \
+        from huaqi_src.layers.capabilities.world_news_enricher.engine import \
             _extract_markdown
 
         text = "Just plain text without any markdown markers."

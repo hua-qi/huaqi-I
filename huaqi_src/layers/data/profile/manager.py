@@ -125,7 +125,7 @@ class UserProfileManager:
             )
 
         try:
-            from huaqi_src.layers.capabilities.llm.manager import Message
+            from huaqi_src.layers.models import Message
 
             messages = [
                 Message.system("你是一个信息提取助手，从用户消息中提取结构化信息。"),
@@ -209,7 +209,7 @@ class UserProfileManager:
 
     def extract_with_llm(self, user_message: str, llm_manager) -> Dict[str, Any]:
         """使用 LLM 提取用户信息"""
-        from huaqi_src.layers.capabilities.llm.manager import Message
+        from huaqi_src.layers.models import Message
 
         current_summary = self.profile.get_summary() or "暂无"
         prompt = self.get_llm_extraction_prompt().format(current_profile=current_summary)
